@@ -1,0 +1,129 @@
+.shell {
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+// ── Sidenav ─────────────────────────────────────────────────
+.sidenav {
+  width: 260px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidenav-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 1.25rem 1rem;
+
+  .logo-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: var(--accent-gradient);
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 22px;
+      width: 22px;
+      height: 22px;
+      color: #0b0e14;
+    }
+  }
+
+  .logo-text {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+}
+
+mat-nav-list {
+  padding-top: 0.5rem;
+  flex: 1;
+
+  a[mat-list-item] {
+    margin: 0 0.75rem 0.25rem;
+    border-radius: var(--radius-sm);
+    height: 44px;
+    color: var(--text-secondary);
+    transition: background var(--transition-fast), color var(--transition-fast);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+    }
+
+    &.active-link {
+      background: rgba(34, 211, 238, 0.1);
+      color: var(--accent-primary);
+    }
+  }
+}
+
+.sidenav-footer {
+  padding: 1rem 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.logout-btn {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+
+  &:hover {
+    color: var(--danger);
+    background: rgba(248, 113, 113, 0.08);
+  }
+}
+
+// ── Top Bar ─────────────────────────────────────────────────
+.top-bar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  height: 56px;
+  padding: 0 1.5rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.user-email {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Page Content ─────────────────────────────────────────────
+.content-area {
+  background: var(--bg-primary);
+}
+
+.page-content {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .page-content {
+    padding: 1rem;
+  }
+}
