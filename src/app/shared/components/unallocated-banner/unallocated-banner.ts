@@ -1,6 +1,7 @@
 import {
   Component,
   ChangeDetectionStrategy,
+  computed,
   input,
   output,
 } from '@angular/core';
@@ -17,31 +18,41 @@ import { pulseGlow } from '../../../shared/animations/route-animations';
   imports: [RouterLink, MatIconModule, MatButtonModule, Counter],
   animations: [pulseGlow],
   template: `
-    <div class="banner" @pulseGlow role="status">
+    <div class="banner" [class.danger]="isOverAllocated()" @pulseGlow role="status">
       <div class="banner-glow"></div>
       <div class="banner-content">
         <div class="banner-icon-wrap">
-          <mat-icon class="banner-icon">account_balance_wallet</mat-icon>
+          <mat-icon class="banner-icon">{{ isOverAllocated() ? 'warning' : 'account_balance_wallet' }}</mat-icon>
         </div>
         <div class="banner-text">
-          <span class="banner-title">Unallocated Funds</span>
+          <span class="banner-title">{{ isOverAllocated() ? 'Over-Allocated' : 'Unallocated Funds' }}</span>
           <span class="banner-message">
-            You have
-            <strong class="banner-amount">
-              <app-counter [targetValue]="amount()" [duration]="1000" />
-            </strong>
-            not assigned to any envelope.
+            @if (isOverAllocated()) {
+              You have allocated
+              <strong class="banner-amount">
+                <app-counter [targetValue]="displayAmount()" [duration]="1000" />
+              </strong>
+              more than your total balance.
+            } @else {
+              You have
+              <strong class="banner-amount">
+                <app-counter [targetValue]="displayAmount()" [duration]="1000" />
+              </strong>
+              not assigned to any envelope.
+            }
           </span>
         </div>
         <div class="banner-actions">
-          <a mat-flat-button
-             color="primary"
-             routerLink="/dashboard/envelopes"
-             class="allocate-btn"
-             (click)="allocate.emit()">
-            <mat-icon>mail</mat-icon>
-            Allocate Now
-          </a>
+          @if (!isOverAllocated()) {
+            <a mat-flat-button
+               color="primary"
+               routerLink="/dashboard/envelopes"
+               class="allocate-btn"
+               (click)="allocate.emit()">
+              <mat-icon>mail</mat-icon>
+              Allocate Now
+            </a>
+          }
           <button mat-icon-button
                   class="dismiss-btn"
                   (click)="dismiss.emit()"
@@ -70,6 +81,44 @@ import { pulseGlow } from '../../../shared/animations/route-animations';
       );
       border: 1px solid rgba(251, 191, 36, 0.3);
       animation: pulse-glow-border 2.5s ease-in-out infinite;
+
+      &.danger {
+        background: linear-gradient(
+          135deg,
+          rgba(239, 68, 68, 0.1) 0%,
+          rgba(248, 113, 113, 0.08) 50%,
+          rgba(239, 68, 68, 0.06) 100%
+        );
+        border-color: rgba(239, 68, 68, 0.4);
+
+        .banner-glow {
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(239, 68, 68, 0.06) 25%,
+            rgba(248, 113, 113, 0.1) 50%,
+            rgba(239, 68, 68, 0.06) 75%,
+            transparent 100%
+          );
+        }
+
+        .banner-icon-wrap {
+          background: rgba(239, 68, 68, 0.15);
+        }
+
+        .banner-icon {
+          color: var(--danger, #ef4444);
+        }
+
+        .banner-title {
+          color: var(--danger, #ef4444);
+        }
+
+        .banner-amount {
+          color: var(--danger, #ef4444);
+          text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+        }
+      }
     }
 
     .banner-glow {
@@ -201,4 +250,7 @@ export class UnallocatedBanner {
   readonly amount = input.required<number>();
   readonly dismiss = output<void>();
   readonly allocate = output<void>();
+
+  protected readonly isOverAllocated = computed(() => this.amount() < 0);
+  protected readonly displayAmount = computed(() => Math.abs(this.amount()));
 }

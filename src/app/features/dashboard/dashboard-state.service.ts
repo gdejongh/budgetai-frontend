@@ -30,7 +30,7 @@ export class DashboardStateService {
   );
 
   readonly unallocatedAmount = computed(() =>
-    Math.max(0, this.totalBankBalance() - this.totalEnvelopeAllocation())
+    this.totalBankBalance() - this.totalEnvelopeAllocation()
   );
 
   readonly accountCount = computed(() => this.accounts().length);
@@ -80,6 +80,20 @@ export class DashboardStateService {
 
   removeAccount(id: string): void {
     this.accounts.update(current => current.filter(a => a.id !== id));
+  }
+
+  addEnvelope(envelope: EnvelopeDTO): void {
+    this.envelopes.update(current => [...current, envelope]);
+  }
+
+  removeEnvelope(id: string): void {
+    this.envelopes.update(current => current.filter(e => e.id !== id));
+  }
+
+  updateEnvelope(id: string, updated: EnvelopeDTO): void {
+    this.envelopes.update(current =>
+      current.map(e => (e.id === id ? updated : e))
+    );
   }
 
   addTransaction(transaction: TransactionDTO): void {
