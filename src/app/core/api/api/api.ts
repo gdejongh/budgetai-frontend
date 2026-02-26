@@ -1,0 +1,11 @@
+export * from './appUserController.service';
+import { AppUserControllerService } from './appUserController.service';
+export * from './authController.service';
+import { AuthControllerService } from './authController.service';
+export * from './bankAccountController.service';
+import { BankAccountControllerService } from './bankAccountController.service';
+export * from './envelopeController.service';
+import { EnvelopeControllerService } from './envelopeController.service';
+export * from './transactionController.service';
+import { TransactionControllerService } from './transactionController.service';
+export const APIS = [AppUserControllerService, AuthControllerService, BankAccountControllerService, EnvelopeControllerService, TransactionControllerService];

@@ -1,0 +1,58 @@
+<mat-sidenav-container class="shell">
+  <mat-sidenav #sidenav
+               [mode]="isMobile() ? 'over' : 'side'"
+               [opened]="!isMobile()"
+               class="sidenav">
+    <div class="sidenav-header">
+      <div class="logo-icon">
+        <mat-icon>account_balance_wallet</mat-icon>
+      </div>
+      <span class="logo-text gradient-text">BudgetAI</span>
+    </div>
+
+    <mat-nav-list>
+      <a mat-list-item routerLink="/dashboard" routerLinkActive="active-link" [routerLinkActiveOptions]="{ exact: true }">
+        <mat-icon matListItemIcon>dashboard</mat-icon>
+        <span matListItemTitle>Dashboard</span>
+      </a>
+      <a mat-list-item routerLink="/dashboard/accounts" routerLinkActive="active-link">
+        <mat-icon matListItemIcon>account_balance</mat-icon>
+        <span matListItemTitle>Bank Accounts</span>
+      </a>
+      <a mat-list-item routerLink="/dashboard/envelopes" routerLinkActive="active-link">
+        <mat-icon matListItemIcon>mail</mat-icon>
+        <span matListItemTitle>Envelopes</span>
+      </a>
+      <a mat-list-item routerLink="/dashboard/transactions" routerLinkActive="active-link">
+        <mat-icon matListItemIcon>receipt_long</mat-icon>
+        <span matListItemTitle>Transactions</span>
+      </a>
+    </mat-nav-list>
+
+    <div class="sidenav-footer">
+      <button mat-button class="logout-btn" (click)="onLogout()">
+        <mat-icon>logout</mat-icon>
+        <span>Sign Out</span>
+      </button>
+    </div>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="content-area">
+    <mat-toolbar class="top-bar">
+      @if (isMobile()) {
+        <button mat-icon-button (click)="sidenav.toggle()" aria-label="Toggle navigation">
+          <mat-icon>menu</mat-icon>
+        </button>
+      }
+      <span class="spacer"></span>
+      <div class="user-info">
+        <mat-icon>person_outline</mat-icon>
+        <span class="user-email">{{ userEmail() }}</span>
+      </div>
+    </mat-toolbar>
+
+    <main class="page-content">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>
