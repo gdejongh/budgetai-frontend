@@ -11,7 +11,7 @@
 
 export interface TransactionDTO { 
     id?: string;
-    appUserId: string;
+    appUserId?: string;
     bankAccountId: string;
     envelopeId?: string;
     amount: number;
