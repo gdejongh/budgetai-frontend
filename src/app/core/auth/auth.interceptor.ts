@@ -1,5 +1,6 @@
 import { HttpHandlerFn, HttpInterceptorFn, HttpRequest, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { catchError, switchMap, throwError } from 'rxjs';
 
 import { AuthService } from './auth.service';
@@ -22,6 +23,7 @@ function isPublicUrl(url: string, method: string): boolean {
 
 export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
   const authService = inject(AuthService);
+  const router = inject(Router);
 
   if (isPublicUrl(req.url, req.method)) {
     return next(req);
@@ -34,7 +36,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
 
   return next(authedReq).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401 && token && !req.url.includes('/api/auth/refresh')) {
+      if ((error.status === 401 || error.status === 403) && token && !req.url.includes('/api/auth/refresh')) {
         return authService.refresh().pipe(
           switchMap(response => {
             if (response.accessToken) {
@@ -44,10 +46,12 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
               return next(retryReq);
             }
             authService.clearSession();
+            router.navigate(['/login']);
             return throwError(() => error);
           }),
           catchError(() => {
             authService.clearSession();
+            router.navigate(['/login']);
             return throwError(() => error);
           })
         );
