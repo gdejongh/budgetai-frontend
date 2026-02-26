@@ -17,6 +17,8 @@ import { Observable }                                        from 'rxjs';
 import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 
 // @ts-ignore
+import { CreateEnvelopeRequest } from '../model/createEnvelopeRequest';
+// @ts-ignore
 import { EnvelopeDTO } from '../model/envelopeDTO';
 
 // @ts-ignore
@@ -37,17 +39,17 @@ export class EnvelopeControllerService extends BaseService {
 
     /**
      * @endpoint post /api/envelopes
-     * @param envelopeDTO 
+     * @param createEnvelopeRequest 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public createEnvelope(envelopeDTO: EnvelopeDTO, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<EnvelopeDTO>;
-    public createEnvelope(envelopeDTO: EnvelopeDTO, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<EnvelopeDTO>>;
-    public createEnvelope(envelopeDTO: EnvelopeDTO, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<EnvelopeDTO>>;
-    public createEnvelope(envelopeDTO: EnvelopeDTO, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
-        if (envelopeDTO === null || envelopeDTO === undefined) {
-            throw new Error('Required parameter envelopeDTO was null or undefined when calling createEnvelope.');
+    public createEnvelope(createEnvelopeRequest: CreateEnvelopeRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<EnvelopeDTO>;
+    public createEnvelope(createEnvelopeRequest: CreateEnvelopeRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<EnvelopeDTO>>;
+    public createEnvelope(createEnvelopeRequest: CreateEnvelopeRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<EnvelopeDTO>>;
+    public createEnvelope(createEnvelopeRequest: CreateEnvelopeRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (createEnvelopeRequest === null || createEnvelopeRequest === undefined) {
+            throw new Error('Required parameter createEnvelopeRequest was null or undefined when calling createEnvelope.');
         }
 
         let localVarHeaders = this.defaultHeaders;
@@ -89,7 +91,7 @@ export class EnvelopeControllerService extends BaseService {
         return this.httpClient.request<EnvelopeDTO>('post', `${basePath}${localVarPath}`,
             {
                 context: localVarHttpContext,
-                body: envelopeDTO,
+                body: createEnvelopeRequest,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

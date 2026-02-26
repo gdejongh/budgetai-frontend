@@ -18,6 +18,8 @@ import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 
 // @ts-ignore
 import { BankAccountDTO } from '../model/bankAccountDTO';
+// @ts-ignore
+import { CreateBankAccountRequest } from '../model/createBankAccountRequest';
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS }                     from '../variables';
@@ -37,17 +39,17 @@ export class BankAccountControllerService extends BaseService {
 
     /**
      * @endpoint post /api/bank-accounts
-     * @param bankAccountDTO 
+     * @param createBankAccountRequest 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public createBankAccount(bankAccountDTO: BankAccountDTO, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<BankAccountDTO>;
-    public createBankAccount(bankAccountDTO: BankAccountDTO, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<BankAccountDTO>>;
-    public createBankAccount(bankAccountDTO: BankAccountDTO, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<BankAccountDTO>>;
-    public createBankAccount(bankAccountDTO: BankAccountDTO, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
-        if (bankAccountDTO === null || bankAccountDTO === undefined) {
-            throw new Error('Required parameter bankAccountDTO was null or undefined when calling createBankAccount.');
+    public createBankAccount(createBankAccountRequest: CreateBankAccountRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<BankAccountDTO>;
+    public createBankAccount(createBankAccountRequest: CreateBankAccountRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<BankAccountDTO>>;
+    public createBankAccount(createBankAccountRequest: CreateBankAccountRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<BankAccountDTO>>;
+    public createBankAccount(createBankAccountRequest: CreateBankAccountRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (createBankAccountRequest === null || createBankAccountRequest === undefined) {
+            throw new Error('Required parameter createBankAccountRequest was null or undefined when calling createBankAccount.');
         }
 
         let localVarHeaders = this.defaultHeaders;
@@ -89,7 +91,7 @@ export class BankAccountControllerService extends BaseService {
         return this.httpClient.request<BankAccountDTO>('post', `${basePath}${localVarPath}`,
             {
                 context: localVarHttpContext,
-                body: bankAccountDTO,
+                body: createBankAccountRequest,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

@@ -15,6 +15,8 @@ index.ts
 model/appUserDTO.ts
 model/authResponseDTO.ts
 model/bankAccountDTO.ts
+model/createBankAccountRequest.ts
+model/createEnvelopeRequest.ts
 model/envelopeDTO.ts
 model/loginRequestDTO.ts
 model/models.ts

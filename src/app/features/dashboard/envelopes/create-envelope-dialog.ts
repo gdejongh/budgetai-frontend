@@ -13,7 +13,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
-import { EnvelopeDTO } from '../../../core/api/model/envelopeDTO';
+import { CreateEnvelopeRequest } from '../../../core/api/model/createEnvelopeRequest';
 import { ConfettiService } from '../../../shared/services/confetti.service';
 import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
@@ -185,8 +185,7 @@ export class CreateEnvelopeDialog {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const dto: EnvelopeDTO = {
-      appUserId: '', // Backend sets this from the auth token
+    const dto: CreateEnvelopeRequest = {
       name: this.form.value.name!,
       allocatedBalance: this.form.value.allocatedBalance ?? 0,
     };

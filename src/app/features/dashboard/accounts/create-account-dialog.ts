@@ -13,7 +13,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { BankAccountControllerService } from '../../../core/api/api/bankAccountController.service';
-import { BankAccountDTO } from '../../../core/api/model/bankAccountDTO';
+import { CreateBankAccountRequest } from '../../../core/api/model/createBankAccountRequest';
 import { ConfettiService } from '../../../shared/services/confetti.service';
 import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
@@ -188,8 +188,7 @@ export class CreateAccountDialog {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const dto: BankAccountDTO = {
-      appUserId: '', // Backend sets this from the auth token
+    const dto: CreateBankAccountRequest = {
       name: this.form.value.name!,
       currentBalance: this.form.value.currentBalance!,
     };
