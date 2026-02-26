@@ -52,6 +52,12 @@
     </mat-toolbar>
 
     <main class="page-content">
+      @if (!bannerDismissed() && !dashboardState.loading() && dashboardState.unallocatedAmount() > 0) {
+        <app-unallocated-banner
+          [amount]="dashboardState.unallocatedAmount()"
+          (dismiss)="onDismissBanner()"
+          (allocate)="onDismissBanner()" />
+      }
       <router-outlet />
     </main>
   </mat-sidenav-content>
