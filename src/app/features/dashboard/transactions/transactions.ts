@@ -864,7 +864,7 @@ export class Transactions implements OnInit {
     // Optimistic update (adjusts balances immediately)
     this.dashboardState.updateTransaction(id, original, updated);
 
-    this.transactionApi.update1(id, updated).subscribe({
+    this.transactionApi.updateTransaction(id, updated).subscribe({
       next: (saved) => {
         // Reconcile with server response
         this.dashboardState.updateTransaction(id, updated, saved);
@@ -904,7 +904,7 @@ export class Transactions implements OnInit {
     const id = this.deletingId();
     if (!id) return;
 
-    this.transactionApi.delete1(id).subscribe({
+    this.transactionApi.deleteTransaction(id).subscribe({
       next: () => {
         this.dashboardState.removeTransaction(id);
         this.deletingId.set(null);

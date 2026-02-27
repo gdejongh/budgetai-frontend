@@ -357,7 +357,7 @@ export class CreateTransactionDialog {
       envelopeId: raw.envelopeId || undefined,
     };
 
-    this.transactionApi.create1(dto).subscribe({
+    this.transactionApi.createTransaction(dto).subscribe({
       next: (created) => {
         this.loading.set(false);
         this.dialogRef.close(created);

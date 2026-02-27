@@ -1,19 +1,19 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { forkJoin } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { BankAccountControllerService } from '../../core/api/api/bankAccountController.service';
 import { EnvelopeControllerService } from '../../core/api/api/envelopeController.service';
+import { TransactionControllerService } from '../../core/api/api/transactionController.service';
 import { BankAccountDTO } from '../../core/api/model/bankAccountDTO';
 import { EnvelopeDTO } from '../../core/api/model/envelopeDTO';
 import { TransactionDTO } from '../../core/api/model/transactionDTO';
 
 @Injectable({ providedIn: 'root' })
 export class DashboardStateService {
-  private readonly http = inject(HttpClient);
   private readonly bankAccountApi = inject(BankAccountControllerService);
   private readonly envelopeApi = inject(EnvelopeControllerService);
+  private readonly transactionApi = inject(TransactionControllerService);
   private readonly authService = inject(AuthService);
 
   readonly accounts = signal<BankAccountDTO[]>([]);
@@ -49,7 +49,7 @@ export class DashboardStateService {
     forkJoin({
       accounts: this.bankAccountApi.getBankAccounts(),
       envelopes: this.envelopeApi.getEnvelopes(),
-      transactions: this.http.get<TransactionDTO[]>('http://localhost:8080/api/transactions'),
+      transactions: this.transactionApi.getAllTransactions(),
     }).subscribe({
       next: ({ accounts, envelopes, transactions }) => {
         this.accounts.set(accounts);
@@ -68,7 +68,7 @@ export class DashboardStateService {
   }
 
   loadTransactions(): void {
-    this.http.get<TransactionDTO[]>('http://localhost:8080/api/transactions').subscribe({
+    this.transactionApi.getAllTransactions().subscribe({
       next: (transactions) => this.transactions.set(transactions),
       error: () => {},
     });
