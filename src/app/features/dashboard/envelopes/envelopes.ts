@@ -4,9 +4,12 @@ import {
   inject,
   OnInit,
   signal,
+  computed,
   ElementRef,
   viewChildren,
 } from '@angular/core';
+import { Router } from '@angular/router';
+import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,8 +19,10 @@ import { MatInputModule } from '@angular/material/input';
 
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
 import { EnvelopeDTO } from '../../../core/api/model/envelopeDTO';
+import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateEnvelopeDialog } from './create-envelope-dialog';
+import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
 import { UnallocatedBanner } from '../../../shared/components/unallocated-banner/unallocated-banner';
@@ -38,8 +43,11 @@ import {
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
+    CdkConnectedOverlay,
+    CdkOverlayOrigin,
     Counter,
     SkeletonCard,
+    TransactionPreview,
   ],
   animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
   template: `
@@ -141,7 +149,33 @@ import {
                   <mat-icon>sync</mat-icon>
                 </div>
               }
+
+              <button class="view-txn-link"
+                      cdkOverlayOrigin
+                      #iconOrigin="cdkOverlayOrigin"
+                      (click)="togglePreview(envelope.id!)"
+                      [attr.aria-label]="'View transactions for ' + envelope.name">
+                <mat-icon>receipt_long</mat-icon>
+                <span>{{ txnCountForEnvelope(envelope.id!) }} transactions</span>
+                <mat-icon class="link-arrow">chevron_right</mat-icon>
+              </button>
             </div>
+
+            <ng-template cdkConnectedOverlay
+                         [cdkConnectedOverlayOrigin]="iconOrigin"
+                         [cdkConnectedOverlayOpen]="activePreviewId() === envelope.id"
+                         [cdkConnectedOverlayHasBackdrop]="true"
+                         cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                         (backdropClick)="closePreview()"
+                         (detach)="closePreview()"
+                         [cdkConnectedOverlayPositions]="previewPositions">
+              <app-transaction-preview
+                [transactions]="previewTransactions()"
+                [entityName]="previewEntityName()"
+                [totalCount]="previewTotalCount()"
+                (selectTransaction)="onPreviewSelectTransaction($event)"
+                (viewAll)="onPreviewViewAll()" />
+            </ng-template>
           }
         </div>
       }
@@ -400,6 +434,52 @@ import {
       color: var(--text-muted);
     }
 
+    .view-txn-link {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.5rem 0.5rem;
+      margin-top: 0.75rem;
+      border: 1px solid transparent;
+      border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 0 0 var(--radius-sm, 8px) var(--radius-sm, 8px);
+      transition: color var(--transition-fast), background var(--transition-fast);
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      .link-arrow {
+        margin-left: auto;
+        opacity: 0;
+        transition: opacity var(--transition-fast), transform var(--transition-fast);
+      }
+
+      &:hover {
+        color: var(--accent-secondary, #818cf8);
+        background: rgba(129, 140, 248, 0.04);
+
+        .link-arrow {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-secondary, #818cf8);
+        outline-offset: -2px;
+      }
+    }
+
     .save-indicator {
       position: absolute;
       top: 0.75rem;
@@ -520,10 +600,53 @@ export class Envelopes implements OnInit {
   protected readonly dashboardState = inject(DashboardStateService);
   private readonly dialog = inject(MatDialog);
   private readonly envelopeApi = inject(EnvelopeControllerService);
+  private readonly router = inject(Router);
 
   protected readonly deletingId = signal<string | null>(null);
   protected readonly savingId = signal<string | null>(null);
   protected readonly bannerDismissed = signal(false);
+  protected readonly activePreviewId = signal<string | null>(null);
+
+  protected readonly previewPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -8 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
+  ];
+
+  protected readonly previewTransactions = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return [];
+    return this.dashboardState.transactions()
+      .filter(t => t.envelopeId === id)
+      .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
+      .slice(0, 5);
+  });
+
+  protected readonly previewTotalCount = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return 0;
+    return this.dashboardState.transactions().filter(t => t.envelopeId === id).length;
+  });
+
+  protected readonly previewEntityName = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return '';
+    return this.dashboardState.envelopes().find(e => e.id === id)?.name ?? '';
+  });
+
+  protected readonly txnCountMap = computed(() => {
+    const map: Record<string, number> = {};
+    for (const t of this.dashboardState.transactions()) {
+      if (t.envelopeId) {
+        map[t.envelopeId] = (map[t.envelopeId] ?? 0) + 1;
+      }
+    }
+    return map;
+  });
+
+  txnCountForEnvelope(envelopeId: string): number {
+    return this.txnCountMap()[envelopeId] ?? 0;
+  }
 
   ngOnInit(): void {
     if (this.dashboardState.envelopes().length === 0 && !this.dashboardState.loading()) {
@@ -623,6 +746,30 @@ export class Envelopes implements OnInit {
         }
         this.savingId.set(null);
       },
+    });
+  }
+
+  togglePreview(id: string): void {
+    this.activePreviewId.update(current => current === id ? null : id);
+  }
+
+  closePreview(): void {
+    this.activePreviewId.set(null);
+  }
+
+  onPreviewSelectTransaction(txn: TransactionDTO): void {
+    const envelopeId = this.activePreviewId();
+    this.closePreview();
+    this.router.navigate(['/dashboard/transactions'], {
+      queryParams: { envelopeId, highlightId: txn.id },
+    });
+  }
+
+  onPreviewViewAll(): void {
+    const id = this.activePreviewId();
+    this.closePreview();
+    this.router.navigate(['/dashboard/transactions'], {
+      queryParams: { envelopeId: id },
     });
   }
 }

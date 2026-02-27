@@ -4,7 +4,10 @@ import {
   inject,
   OnInit,
   signal,
+  computed,
 } from '@angular/core';
+import { Router } from '@angular/router';
+import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,8 +15,10 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { BankAccountControllerService } from '../../../core/api/api/bankAccountController.service';
 import { BankAccountDTO } from '../../../core/api/model/bankAccountDTO';
+import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateAccountDialog } from './create-account-dialog';
+import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
 import {
@@ -31,8 +36,11 @@ import {
     MatIconModule,
     MatButtonModule,
     MatDialogModule,
+    CdkConnectedOverlay,
+    CdkOverlayOrigin,
     Counter,
     SkeletonCard,
+    TransactionPreview,
   ],
   animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
   template: `
@@ -116,7 +124,33 @@ import {
                 <mat-icon>sync</mat-icon>
               </div>
             }
+
+            <button class="view-txn-link"
+                    cdkOverlayOrigin
+                    #iconOrigin="cdkOverlayOrigin"
+                    (click)="togglePreview(account.id!)"
+                    [attr.aria-label]="'View transactions for ' + account.name">
+              <mat-icon>receipt_long</mat-icon>
+              <span>{{ txnCountForAccount(account.id!) }} transactions</span>
+              <mat-icon class="link-arrow">chevron_right</mat-icon>
+            </button>
           </div>
+
+          <ng-template cdkConnectedOverlay
+                       [cdkConnectedOverlayOrigin]="iconOrigin"
+                       [cdkConnectedOverlayOpen]="activePreviewId() === account.id"
+                       [cdkConnectedOverlayHasBackdrop]="true"
+                       cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                       (backdropClick)="closePreview()"
+                       (detach)="closePreview()"
+                       [cdkConnectedOverlayPositions]="previewPositions">
+            <app-transaction-preview
+              [transactions]="previewTransactions()"
+              [entityName]="previewEntityName()"
+              [totalCount]="previewTotalCount()"
+              (selectTransaction)="onPreviewSelectTransaction($event)"
+              (viewAll)="onPreviewViewAll()" />
+          </ng-template>
         }
       </div>
     }
@@ -321,6 +355,52 @@ import {
       color: var(--text-muted);
     }
 
+    .view-txn-link {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.5rem 0.5rem;
+      margin-top: 0.75rem;
+      border: 1px solid transparent;
+      border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 0 0 var(--radius-sm, 8px) var(--radius-sm, 8px);
+      transition: color var(--transition-fast), background var(--transition-fast);
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      .link-arrow {
+        margin-left: auto;
+        opacity: 0;
+        transition: opacity var(--transition-fast), transform var(--transition-fast);
+      }
+
+      &:hover {
+        color: var(--accent-primary);
+        background: rgba(34, 211, 238, 0.04);
+
+        .link-arrow {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: -2px;
+      }
+    }
+
     .save-indicator {
       position: absolute;
       top: 0.75rem;
@@ -441,9 +521,50 @@ export class Accounts implements OnInit {
   protected readonly dashboardState = inject(DashboardStateService);
   private readonly dialog = inject(MatDialog);
   private readonly bankAccountApi = inject(BankAccountControllerService);
+  private readonly router = inject(Router);
 
   protected readonly deletingId = signal<string | null>(null);
   protected readonly savingId = signal<string | null>(null);
+  protected readonly activePreviewId = signal<string | null>(null);
+
+  protected readonly previewPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -8 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
+  ];
+
+  protected readonly previewTransactions = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return [];
+    return this.dashboardState.transactions()
+      .filter(t => t.bankAccountId === id)
+      .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
+      .slice(0, 5);
+  });
+
+  protected readonly previewTotalCount = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return 0;
+    return this.dashboardState.transactions().filter(t => t.bankAccountId === id).length;
+  });
+
+  protected readonly previewEntityName = computed(() => {
+    const id = this.activePreviewId();
+    if (!id) return '';
+    return this.dashboardState.accounts().find(a => a.id === id)?.name ?? '';
+  });
+
+  protected readonly txnCountMap = computed(() => {
+    const map: Record<string, number> = {};
+    for (const t of this.dashboardState.transactions()) {
+      map[t.bankAccountId] = (map[t.bankAccountId] ?? 0) + 1;
+    }
+    return map;
+  });
+
+  txnCountForAccount(accountId: string): number {
+    return this.txnCountMap()[accountId] ?? 0;
+  }
 
   ngOnInit(): void {
     // Data is loaded by the layout, but refresh if empty
@@ -547,6 +668,29 @@ export class Accounts implements OnInit {
         }
         this.savingId.set(null);
       },
+    });
+  }
+
+  togglePreview(id: string): void {
+    this.activePreviewId.update(current => current === id ? null : id);
+  }
+
+  closePreview(): void {
+    this.activePreviewId.set(null);
+  }
+
+  onPreviewSelectTransaction(txn: TransactionDTO): void {
+    this.closePreview();
+    this.router.navigate(['/dashboard/transactions'], {
+      queryParams: { bankAccountId: txn.bankAccountId, highlightId: txn.id },
+    });
+  }
+
+  onPreviewViewAll(): void {
+    const id = this.activePreviewId();
+    this.closePreview();
+    this.router.navigate(['/dashboard/transactions'], {
+      queryParams: { bankAccountId: id },
     });
   }
 }

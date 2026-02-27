@@ -122,6 +122,50 @@ export class DashboardStateService {
     this.transactions.update(current => current.filter(t => t.id !== id));
     if (transaction) {
       this.adjustAccountBalance(transaction.bankAccountId, -transaction.amount);
+      if (transaction.envelopeId) {
+        this.adjustEnvelopeBalance(transaction.envelopeId, -transaction.amount);
+      }
+    }
+  }
+
+  updateTransaction(id: string, oldTxn: TransactionDTO, newTxn: TransactionDTO): void {
+    this.transactions.update(current =>
+      current.map(t => (t.id === id ? newTxn : t))
+    );
+
+    const oldAccountId = oldTxn.bankAccountId;
+    const newAccountId = newTxn.bankAccountId;
+    const oldAmount = oldTxn.amount;
+    const newAmount = newTxn.amount;
+    const amountDiff = newAmount - oldAmount;
+
+    // --- Bank Account balance adjustments ---
+    if (oldAccountId !== newAccountId) {
+      this.adjustAccountBalance(oldAccountId, -oldAmount);
+      this.adjustAccountBalance(newAccountId, newAmount);
+    } else if (amountDiff !== 0) {
+      this.adjustAccountBalance(oldAccountId, amountDiff);
+    }
+
+    // --- Envelope balance adjustments ---
+    const oldEnvelopeId = oldTxn.envelopeId;
+    const newEnvelopeId = newTxn.envelopeId;
+
+    if (oldEnvelopeId && !newEnvelopeId) {
+      // Envelope removed
+      this.adjustEnvelopeBalance(oldEnvelopeId, -oldAmount);
+    } else if (!oldEnvelopeId && newEnvelopeId) {
+      // Envelope added
+      this.adjustEnvelopeBalance(newEnvelopeId, newAmount);
+    } else if (oldEnvelopeId && newEnvelopeId) {
+      if (oldEnvelopeId !== newEnvelopeId) {
+        // Envelope changed
+        this.adjustEnvelopeBalance(oldEnvelopeId, -oldAmount);
+        this.adjustEnvelopeBalance(newEnvelopeId, newAmount);
+      } else if (amountDiff !== 0) {
+        // Same envelope, amount changed
+        this.adjustEnvelopeBalance(oldEnvelopeId, amountDiff);
+      }
     }
   }
 
@@ -131,6 +175,16 @@ export class DashboardStateService {
         a.id === accountId
           ? { ...a, currentBalance: (a.currentBalance ?? 0) + amount }
           : a
+      )
+    );
+  }
+
+  private adjustEnvelopeBalance(envelopeId: string, amount: number): void {
+    this.envelopes.update(current =>
+      current.map(e =>
+        e.id === envelopeId
+          ? { ...e, allocatedBalance: (e.allocatedBalance ?? 0) + amount }
+          : e
       )
     );
   }
