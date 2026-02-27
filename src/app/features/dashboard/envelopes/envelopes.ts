@@ -51,10 +51,22 @@ import {
         </div>
         @if (!dashboardState.loading() && dashboardState.envelopes().length > 0) {
           <div class="total-allocation glass-card glow-card">
-            <span class="total-label">Total Allocated</span>
-            <span class="total-value glow-text">
-              <app-counter [targetValue]="dashboardState.totalEnvelopeAllocation()" />
+            <span class="total-label">Unallocated</span>
+            <span
+              class="total-value glow-text"
+              [class.unallocated-yellow]="dashboardState.unallocatedAmount() > 0"
+              [class.unallocated-red]="dashboardState.unallocatedAmount() < 0"
+            >
+              <app-counter [targetValue]="dashboardState.unallocatedAmount()" />
             </span>
+            @if (dashboardState.unallocatedAmount() < 0) {
+              <div class="unallocated-warning-box" role="alert">
+                <mat-icon class="warning-icon">warning_amber</mat-icon>
+                <span class="unallocated-warning-text">
+                  You have allocated more to your envelopes than the total available in your accounts. Please adjust your allocations.
+                </span>
+              </div>
+            }
           </div>
         }
       </div>
@@ -79,7 +91,10 @@ import {
       } @else {
         <div class="envelopes-grid" @staggerFadeIn>
           @for (envelope of dashboardState.envelopes(); track envelope.id) {
-            <div class="envelope-card glass-card neon-border">
+            <div
+              class="envelope-card glass-card neon-border"
+              [class.envelope-negative]="envelope.allocatedBalance < 0"
+            >
               <div class="card-header">
                 <div class="card-icon">
                   <mat-icon>mail</mat-icon>
@@ -209,6 +224,47 @@ import {
       letter-spacing: -0.02em;
     }
 
+    .unallocated-yellow {
+      color: var(--warning, #fbbf24);
+      text-shadow: 0 0 8px rgba(251, 191, 36, 0.25);
+    }
+
+    .unallocated-red {
+      color: var(--danger, #ef4444);
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+    }
+
+    .unallocated-warning-box {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      margin-top: 0.75rem;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid var(--danger, #ef4444);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+      box-shadow: 0 2px 12px 0 rgba(239, 68, 68, 0.08);
+      color: var(--danger, #ef4444);
+      font-size: 1rem;
+      font-weight: 500;
+      text-align: left;
+      max-width: 420px;
+      margin-left: auto;
+    }
+
+    .unallocated-warning-box .warning-icon {
+      color: var(--danger, #ef4444);
+      font-size: 1.5rem;
+      width: 1.5rem;
+      height: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .unallocated-warning-text {
+      flex: 1;
+      line-height: 1.4;
+    }
+
     .envelopes-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -223,6 +279,13 @@ import {
       &:hover {
         transform: translateY(-2px);
       }
+    }
+
+    .envelope-negative {
+      border-color: var(--danger, #ef4444) !important;
+      box-shadow: 0 0 0 2px var(--danger, #ef4444), 0 2px 12px 0 rgba(239, 68, 68, 0.08);
+      background: rgba(239, 68, 68, 0.06);
+      color: var(--danger, #ef4444);
     }
 
     .card-header {
