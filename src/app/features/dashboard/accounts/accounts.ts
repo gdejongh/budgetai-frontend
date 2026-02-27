@@ -582,6 +582,7 @@ export class Accounts implements OnInit {
     dialogRef.afterClosed().subscribe((result) => {
       if (result) {
         this.dashboardState.addAccount(result);
+        this.dashboardState.loadTransactions();
       }
     });
   }
@@ -657,6 +658,10 @@ export class Accounts implements OnInit {
         // Reconcile with server response
         this.dashboardState.updateAccount(id, saved);
         this.savingId.set(null);
+        // Refresh transactions to pick up any Adjustment transaction created by the backend
+        if (original.currentBalance !== updated.currentBalance) {
+          this.dashboardState.loadTransactions();
+        }
       },
       error: () => {
         // Revert on failure
