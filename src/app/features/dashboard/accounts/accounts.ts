@@ -62,7 +62,6 @@ import {
         <h2>No accounts yet</h2>
         <p>Add your first bank account to start tracking your finances.</p>
         <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
-          <mat-icon>add</mat-icon>
           Add Your First Account
         </button>
       </div>

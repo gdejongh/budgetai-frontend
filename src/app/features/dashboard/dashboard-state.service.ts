@@ -99,6 +99,16 @@ export class DashboardStateService {
   addTransaction(transaction: TransactionDTO): void {
     this.transactions.update(current => [transaction, ...current]);
     this.adjustAccountBalance(transaction.bankAccountId, transaction.amount);
+    // Update envelope balance locally if envelopeId is present
+    if (transaction.envelopeId) {
+      this.envelopes.update(current =>
+        current.map(e =>
+          e.id === transaction.envelopeId
+            ? { ...e, allocatedBalance: (e.allocatedBalance ?? 0) + transaction.amount }
+            : e
+        )
+      );
+    }
   }
 
   removeTransaction(id: string): void {

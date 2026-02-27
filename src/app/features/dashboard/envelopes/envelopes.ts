@@ -79,7 +79,6 @@ import {
           <h2>No envelopes yet</h2>
           <p>Create your first envelope to allocate funds and stay within budget.</p>
           <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
-            <mat-icon>add</mat-icon>
             Create Your First Envelope
           </button>
         </div>

@@ -59,7 +59,6 @@ import {
         <h2>No transactions yet</h2>
         <p>Add your first transaction to start tracking your spending.</p>
         <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
-          <mat-icon>add</mat-icon>
           Add Your First Transaction
         </button>
       </div>
