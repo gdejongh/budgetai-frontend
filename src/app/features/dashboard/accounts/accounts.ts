@@ -374,6 +374,7 @@ export class Accounts implements OnInit {
     this.bankAccountApi.deleteBankAccount(id).subscribe({
       next: () => {
         this.dashboardState.removeAccount(id);
+        this.dashboardState.removeTransactionsForAccount(id);
         this.deletingId.set(null);
       },
       error: () => {

@@ -118,4 +118,11 @@ export class DashboardStateService {
       )
     );
   }
+
+  /**
+   * Remove all transactions for a given bank account ID.
+   */
+  removeTransactionsForAccount(accountId: string): void {
+    this.transactions.update(current => current.filter(t => t.bankAccountId !== accountId));
+  }
 }
