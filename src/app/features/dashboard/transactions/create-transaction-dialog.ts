@@ -3,6 +3,8 @@ import {
   ChangeDetectionStrategy,
   inject,
   signal,
+  computed,
+  effect,
 } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -39,11 +41,41 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
   template: `
     <div class="dialog-container" @fadeIn>
       <h2 mat-dialog-title class="dialog-title">
-        <mat-icon class="title-icon">receipt_long</mat-icon>
-        <span class="gradient-text">New Transaction</span>
+        <mat-icon class="title-icon" [class.deposit-icon]="transactionType() === 'deposit'"
+                                      [class.withdrawal-icon]="transactionType() === 'withdrawal'">
+          {{ transactionType() === 'deposit' ? 'attach_money' : 'money_off' }}
+        </mat-icon>
+        <span [class.deposit-text]="transactionType() === 'deposit'"
+              [class.withdrawal-text]="transactionType() === 'withdrawal'">
+          {{ dialogTitle() }}
+        </span>
       </h2>
 
       <mat-dialog-content>
+        <!-- Deposit / Withdrawal toggle -->
+        <div class="type-toggle" role="radiogroup" aria-label="Transaction type">
+          <button type="button"
+                  class="toggle-btn deposit"
+                  [class.active]="transactionType() === 'deposit'"
+                  role="radio"
+                  [attr.aria-checked]="transactionType() === 'deposit'"
+                  aria-label="Deposit"
+                  (click)="transactionType.set('deposit')">
+            <mat-icon>arrow_downward</mat-icon>
+            Deposit
+          </button>
+          <button type="button"
+                  class="toggle-btn withdrawal"
+                  [class.active]="transactionType() === 'withdrawal'"
+                  role="radio"
+                  [attr.aria-checked]="transactionType() === 'withdrawal'"
+                  aria-label="Withdrawal"
+                  (click)="transactionType.set('withdrawal')">
+            <mat-icon>arrow_upward</mat-icon>
+            Withdrawal
+          </button>
+        </div>
+
         @if (errorMessage()) {
           <div class="error-banner" @slideInUp role="alert">
             <mat-icon>error_outline</mat-icon>
@@ -66,11 +98,20 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
           <mat-form-field appearance="fill">
             <mat-label>Amount</mat-label>
-            <span matTextPrefix>$&nbsp;</span>
+            <span matTextPrefix [class.deposit-prefix]="transactionType() === 'deposit'"
+                                [class.withdrawal-prefix]="transactionType() === 'withdrawal'">
+              {{ transactionType() === 'deposit' ? '+$' : '-$' }}&nbsp;
+            </span>
             <input matInput type="number" formControlName="amount"
-                   placeholder="0.00" step="0.01" />
+                       placeholder="0.00" step="0.01" min="0"
+                       (focus)="onAmountFocus()"
+                       (blur)="onAmountBlur()"
+                     />
             @if (form.controls.amount.hasError('required') && form.controls.amount.touched) {
               <mat-error>Amount is required</mat-error>
+            }
+            @if (form.controls.amount.hasError('min') && form.controls.amount.touched) {
+              <mat-error>Amount must be greater than zero</mat-error>
             }
           </mat-form-field>
 
@@ -112,8 +153,8 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
             <mat-spinner diameter="20"></mat-spinner>
           } @else {
             <ng-container>
-              <mat-icon>add</mat-icon>
-              Add Transaction
+              <mat-icon>{{ transactionType() === 'deposit' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
+              {{ transactionType() === 'deposit' ? 'Add Deposit' : 'Add Withdrawal' }}
             </ng-container>
           }
         </button>
@@ -121,9 +162,110 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
     </div>
   `,
   styles: `
-    .dialog-container { min-width: 380px; }
-    .dialog-title { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 0.5rem; }
-    .title-icon { color: var(--accent-primary); font-size: 28px; width: 28px; height: 28px; }
+    .dialog-container {
+      min-width: 380px;
+    }
+
+    .dialog-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding-bottom: 0.5rem;
+    }
+
+    .title-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
+      transition: color 300ms ease;
+    }
+
+    .deposit-icon { color: var(--success); }
+    .withdrawal-icon { color: var(--danger); }
+
+    .deposit-text {
+      background: linear-gradient(135deg, #34d399, #6ee7b7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+    }
+
+    .withdrawal-text {
+      background: linear-gradient(135deg, #f87171, #fca5a5);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+    }
+
+    /* Segmented toggle */
+    .type-toggle {
+      display: flex;
+      gap: 0;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: var(--radius-lg);
+      padding: 4px;
+      margin-bottom: 1rem;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .toggle-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: calc(var(--radius-lg) - 4px);
+      background: transparent;
+      color: var(--text-muted, rgba(255, 255, 255, 0.45));
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+      outline: none;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: 2px;
+      }
+
+      &.deposit.active {
+        background: rgba(52, 211, 153, 0.15);
+        color: var(--success);
+        box-shadow: 0 0 20px rgba(52, 211, 153, 0.15);
+      }
+
+      &.withdrawal.active {
+        background: rgba(248, 113, 113, 0.15);
+        color: var(--danger);
+        box-shadow: 0 0 20px rgba(248, 113, 113, 0.15);
+      }
+
+      &:not(.active):hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+      }
+    }
+
+    .deposit-prefix {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .withdrawal-prefix {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
     mat-dialog-content { padding-top: 0.5rem; }
     form { display: flex; flex-direction: column; gap: 0.25rem; }
     .error-banner { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;
@@ -147,14 +289,45 @@ export class CreateTransactionDialog {
 
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
+  protected readonly transactionType = signal<'deposit' | 'withdrawal'>('withdrawal');
+
+  protected readonly dialogTitle = computed(() =>
+    this.transactionType() === 'deposit' ? 'New Deposit' : 'New Withdrawal'
+  );
+
+  private readonly glowEffect = effect(() => {
+    const type = this.transactionType();
+    if (type === 'deposit') {
+      this.dialogRef.removePanelClass('withdrawal-glow-dialog');
+      this.dialogRef.addPanelClass('deposit-glow-dialog');
+    } else {
+      this.dialogRef.removePanelClass('deposit-glow-dialog');
+      this.dialogRef.addPanelClass('withdrawal-glow-dialog');
+    }
+  });
 
   protected readonly form = this.fb.nonNullable.group({
     bankAccountId: ['', Validators.required],
-    amount: [0, Validators.required],
+    amount: [0, [Validators.required, Validators.min(0.01)]],
     description: [''],
     transactionDate: [new Date(), Validators.required],
     envelopeId: [''],
   });
+
+  onAmountFocus(): void {
+    const ctrl = this.form.controls.amount;
+    if (ctrl.value === 0) {
+      ctrl.setValue(null as unknown as number); // Clear the field visually
+    }
+  }
+
+  onAmountBlur(): void {
+    const ctrl = this.form.controls.amount;
+    // If left empty (null), reset to 0
+    if (ctrl.value === null) {
+      ctrl.setValue(0);
+    }
+  }
 
   onSubmit(): void {
     if (this.form.invalid) {
@@ -172,9 +345,13 @@ export class CreateTransactionDialog {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
 
+    const signedAmount = this.transactionType() === 'withdrawal'
+      ? -Math.abs(raw.amount)
+      : Math.abs(raw.amount);
+
     const dto: TransactionDTO = {
       bankAccountId: raw.bankAccountId,
-      amount: raw.amount,
+      amount: signedAmount,
       description: raw.description || undefined,
       transactionDate: `${year}-${month}-${day}`,
       envelopeId: raw.envelopeId || undefined,
