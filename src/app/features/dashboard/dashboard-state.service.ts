@@ -82,6 +82,12 @@ export class DashboardStateService {
     this.accounts.update(current => current.filter(a => a.id !== id));
   }
 
+  updateAccount(id: string, updated: BankAccountDTO): void {
+    this.accounts.update(current =>
+      current.map(a => (a.id === id ? updated : a))
+    );
+  }
+
   addEnvelope(envelope: EnvelopeDTO): void {
     this.envelopes.update(current => [...current, envelope]);
   }

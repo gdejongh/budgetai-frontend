@@ -71,19 +71,26 @@ import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animation
         </div>
 
         <div class="stat-card"
-             [class.glow-card]="state.unallocatedAmount() === 0"
-             [class.pulse-warning]="state.unallocatedAmount() > 0">
-          <div class="stat-icon" [class.unallocated-icon]="state.unallocatedAmount() > 0"
-               [class.transactions-icon]="state.unallocatedAmount() === 0">
-            <mat-icon>{{ state.unallocatedAmount() > 0 ? 'warning_amber' : 'check_circle' }}</mat-icon>
+               [class.glow-card]="state.unallocatedAmount() === 0"
+               [class.pulse-warning]="state.unallocatedAmount() > 0"
+               [class.negative-card]="state.unallocatedAmount() < 0">
+            <div class="stat-icon"
+                 [class.unallocated-icon]="state.unallocatedAmount() > 0"
+                 [class.transactions-icon]="state.unallocatedAmount() === 0"
+                 [class.negative-icon]="state.unallocatedAmount() < 0">
+              <mat-icon>
+                {{ state.unallocatedAmount() < 0 ? 'error' : (state.unallocatedAmount() > 0 ? 'warning_amber' : 'check_circle') }}
+              </mat-icon>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Unallocated</span>
+              <span class="stat-value"
+                    [class.warn-value]="state.unallocatedAmount() > 0"
+                    [class.negative-value]="state.unallocatedAmount() < 0">
+                <app-counter [targetValue]="state.unallocatedAmount()" />
+              </span>
+            </div>
           </div>
-          <div class="stat-info">
-            <span class="stat-label">Unallocated</span>
-            <span class="stat-value" [class.warn-value]="state.unallocatedAmount() > 0">
-              <app-counter [targetValue]="state.unallocatedAmount()" />
-            </span>
-          </div>
-        </div>
       </div>
 
       @if (state.accountCount() === 0) {
@@ -118,6 +125,30 @@ import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animation
     }
   `,
   styles: `
+        .negative-card {
+          border-color: var(--danger);
+          background: rgba(239, 68, 68, 0.08);
+          box-shadow: 0 0 0 2px var(--danger), 0 2px 8px 0 rgba(239, 68, 68, 0.08);
+          animation: shake 0.3s;
+        }
+
+        .negative-icon {
+          background: rgba(239, 68, 68, 0.15);
+          color: var(--danger);
+        }
+
+        .negative-value {
+          color: var(--danger);
+        }
+
+        @keyframes shake {
+          0% { transform: translateX(0); }
+          20% { transform: translateX(-2px); }
+          40% { transform: translateX(2px); }
+          60% { transform: translateX(-2px); }
+          80% { transform: translateX(2px); }
+          100% { transform: translateX(0); }
+        }
     .page-header {
       margin-bottom: 2rem;
 

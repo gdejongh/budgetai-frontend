@@ -2,7 +2,6 @@ import {
   Component,
   ChangeDetectionStrategy,
   inject,
-  computed,
   OnInit,
   signal,
 } from '@angular/core';
@@ -12,6 +11,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { BankAccountControllerService } from '../../../core/api/api/bankAccountController.service';
+import { BankAccountDTO } from '../../../core/api/model/bankAccountDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateAccountDialog } from './create-account-dialog';
 import { Counter } from '../../../shared/components/counter/counter';
@@ -20,6 +20,7 @@ import {
   staggerFadeIn,
   slideInUp,
   scaleBounce,
+  fadeIn,
 } from '../../../shared/animations/route-animations';
 
 @Component({
@@ -33,7 +34,7 @@ import {
     Counter,
     SkeletonCard,
   ],
-  animations: [staggerFadeIn, slideInUp, scaleBounce],
+  animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
   template: `
     <div class="page-header" @slideInUp>
       <div class="header-row">
@@ -80,12 +81,40 @@ import {
                 <mat-icon>delete_outline</mat-icon>
               </button>
             </div>
-            <h3 class="card-name">{{ account.name }}</h3>
-            <div class="card-balance">
-              <app-counter [targetValue]="account.currentBalance" [duration]="800" />
+
+            <div class="editable-field name-field">
+              <label class="sr-only" [attr.for]="'acct-name-' + account.id">Account name</label>
+              <input [id]="'acct-name-' + account.id"
+                     class="inline-input name-input"
+                     type="text"
+                     [value]="account.name"
+                     (blur)="onNameBlur($event, account)"
+                     (keydown.enter)="blurTarget($event)"
+                     aria-label="Account name" />
             </div>
+
+            <div class="editable-field balance-field">
+              <label class="sr-only" [attr.for]="'acct-balance-' + account.id">Current balance</label>
+              <span class="currency-prefix">$</span>
+              <input [id]="'acct-balance-' + account.id"
+                     class="inline-input balance-input"
+                     type="number"
+                     step="0.01"
+                     min="0"
+                     [value]="account.currentBalance"
+                     (blur)="onBalanceBlur($event, account)"
+                     (keydown.enter)="blurTarget($event)"
+                     aria-label="Current balance" />
+            </div>
+
             @if (account.createdAt) {
               <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
+            }
+
+            @if (savingId() === account.id) {
+              <div class="save-indicator" @fadeIn>
+                <mat-icon>sync</mat-icon>
+              </div>
             }
           </div>
         }
@@ -172,6 +201,7 @@ import {
 
     .account-card {
       padding: 1.5rem;
+      position: relative;
       transition: transform var(--transition-fast), box-shadow var(--transition-base);
 
       &:hover {
@@ -214,24 +244,100 @@ import {
       }
     }
 
-    .card-name {
-      font-size: 1.1rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.01em;
+    /* Inline editable fields */
+    .editable-field {
+      display: flex;
+      align-items: center;
     }
 
-    .card-balance {
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .inline-input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      outline: none;
+      width: 100%;
+      padding: 0.25rem 0.5rem;
+      transition: border-color var(--transition-fast), background var(--transition-fast);
+
+      &:hover {
+        border-color: rgba(34, 211, 238, 0.2);
+      }
+
+      &:focus {
+        border-color: var(--accent-primary, #22d3ee);
+        background: rgba(34, 211, 238, 0.06);
+      }
+    }
+
+    .name-input {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.25rem;
+    }
+
+    .balance-field {
+      margin-bottom: 0.5rem;
+    }
+
+    .currency-prefix {
       font-size: 1.5rem;
       font-weight: 700;
       color: var(--accent-primary);
-      margin-bottom: 0.5rem;
+      margin-right: 0.1rem;
+      flex-shrink: 0;
+    }
+
+    .balance-input {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent-primary);
       letter-spacing: -0.02em;
+
+      /* Hide number spinner */
+      -moz-appearance: textfield;
+      &::-webkit-outer-spin-button,
+      &::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
     }
 
     .card-date {
       font-size: 0.8rem;
       color: var(--text-muted);
+    }
+
+    .save-indicator {
+      position: absolute;
+      top: 0.75rem;
+      right: 3rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: var(--accent-primary);
+        animation: spin 0.8s linear infinite;
+      }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     .empty-state {
@@ -337,6 +443,7 @@ export class Accounts implements OnInit {
   private readonly bankAccountApi = inject(BankAccountControllerService);
 
   protected readonly deletingId = signal<string | null>(null);
+  protected readonly savingId = signal<string | null>(null);
 
   ngOnInit(): void {
     // Data is loaded by the layout, but refresh if empty
@@ -356,6 +463,41 @@ export class Accounts implements OnInit {
         this.dashboardState.addAccount(result);
       }
     });
+  }
+
+  /** Auto-save name on blur */
+  onNameBlur(event: Event, account: BankAccountDTO): void {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    if (!newName) {
+      // Revert empty names
+      input.value = account.name;
+      return;
+    }
+    if (newName === account.name) return;
+
+    const updated: BankAccountDTO = { ...account, name: newName };
+    this.saveAccount(account, updated, input);
+  }
+
+  /** Auto-save balance on blur */
+  onBalanceBlur(event: Event, account: BankAccountDTO): void {
+    const input = event.target as HTMLInputElement;
+    const newBalance = parseFloat(input.value);
+    if (isNaN(newBalance) || newBalance < 0) {
+      // Revert invalid values
+      input.value = String(account.currentBalance);
+      return;
+    }
+    if (newBalance === account.currentBalance) return;
+
+    const updated: BankAccountDTO = { ...account, currentBalance: newBalance };
+    this.saveAccount(account, updated, input);
+  }
+
+  /** Blur the input on Enter key */
+  blurTarget(event: Event): void {
+    (event.target as HTMLInputElement).blur();
   }
 
   deleteAccount(id: string): void {
@@ -378,6 +520,32 @@ export class Accounts implements OnInit {
       },
       error: () => {
         this.deletingId.set(null);
+      },
+    });
+  }
+
+  private saveAccount(original: BankAccountDTO, updated: BankAccountDTO, input: HTMLInputElement): void {
+    const id = original.id!;
+    this.savingId.set(id);
+
+    // Optimistic update — immediately propagates to totalBankBalance, unallocatedAmount, etc.
+    this.dashboardState.updateAccount(id, updated);
+
+    this.bankAccountApi.updateBankAccount(id, updated).subscribe({
+      next: (saved) => {
+        // Reconcile with server response
+        this.dashboardState.updateAccount(id, saved);
+        this.savingId.set(null);
+      },
+      error: () => {
+        // Revert on failure
+        this.dashboardState.updateAccount(id, original);
+        if (input.type === 'number') {
+          input.value = String(original.currentBalance);
+        } else {
+          input.value = original.name;
+        }
+        this.savingId.set(null);
       },
     });
   }
