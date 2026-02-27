@@ -40,7 +40,6 @@ import {
     MatInputModule,
     Counter,
     SkeletonCard,
-    UnallocatedBanner,
   ],
   animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
   template: `
@@ -66,12 +65,7 @@ import {
         <app-skeleton-card [count]="3" height="200px" />
       </div>
     } @else {
-      @if (dashboardState.unallocatedAmount() !== 0 && !bannerDismissed()) {
-        <app-unallocated-banner
-          [amount]="dashboardState.unallocatedAmount()"
-          (dismiss)="bannerDismissed.set(true)"
-          @fadeIn />
-      }
+    
 
       @if (dashboardState.envelopes().length === 0) {
         <div class="empty-state glass-card" @scaleBounce>
