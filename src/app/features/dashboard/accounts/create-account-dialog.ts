@@ -59,7 +59,9 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
             <mat-label>Current Balance</mat-label>
             <span matTextPrefix>$&nbsp;</span>
             <input matInput type="number" formControlName="currentBalance"
-                   placeholder="0.00" step="0.01" min="0" />
+                   placeholder="0.00" step="0.01" min="0"
+                   (focus)="onCurrentBalanceFocus()"
+                   (blur)="onCurrentBalanceBlur()" />
             @if (form.controls.currentBalance.hasError('required') && form.controls.currentBalance.touched) {
               <mat-error>Balance is required</mat-error>
             }
@@ -206,5 +208,20 @@ export class CreateAccountDialog {
         );
       },
     });
+  }
+
+  onCurrentBalanceFocus(): void {
+    const ctrl = this.form.controls.currentBalance;
+    if (ctrl.value === 0) {
+      ctrl.setValue(null as unknown as number); // Clear the field visually
+    }
+  }
+
+  onCurrentBalanceBlur(): void {
+    const ctrl = this.form.controls.currentBalance;
+    // If left empty (null), reset to 0
+    if (ctrl.value === null) {
+      ctrl.setValue(0);
+    }
   }
 }

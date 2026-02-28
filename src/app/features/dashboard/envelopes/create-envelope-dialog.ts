@@ -59,7 +59,9 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
             <mat-label>Initial Allocation</mat-label>
             <span matTextPrefix>$&nbsp;</span>
             <input matInput type="number" formControlName="allocatedBalance"
-                   placeholder="0.00" step="0.01" min="0" />
+                   placeholder="0.00" step="0.01" min="0"
+                   (focus)="onAllocatedBalanceFocus()"
+                   (blur)="onAllocatedBalanceBlur()" />
             @if (form.controls.allocatedBalance.hasError('min')) {
               <mat-error>Allocation cannot be negative</mat-error>
             }
@@ -203,5 +205,20 @@ export class CreateEnvelopeDialog {
         );
       },
     });
+  }
+
+  onAllocatedBalanceFocus(): void {
+    const ctrl = this.form.controls.allocatedBalance;
+    if (ctrl.value === 0) {
+      ctrl.setValue(null as unknown as number); // Clear the field visually
+    }
+  }
+
+  onAllocatedBalanceBlur(): void {
+    const ctrl = this.form.controls.allocatedBalance;
+    // If left empty (null), reset to 0
+    if (ctrl.value === null) {
+      ctrl.setValue(0);
+    }
   }
 }
