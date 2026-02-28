@@ -1,5 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { BankAccountControllerService } from '../../core/api/api/bankAccountController.service';
@@ -47,9 +47,15 @@ export class DashboardStateService {
     this.loading.set(true);
 
     forkJoin({
-      accounts: this.bankAccountApi.getBankAccounts(),
-      envelopes: this.envelopeApi.getEnvelopes(),
-      transactions: this.transactionApi.getAllTransactions(),
+      accounts: this.bankAccountApi.getBankAccounts().pipe(
+        catchError(err => { console.error('Failed to load accounts:', err); return of([] as BankAccountDTO[]); })
+      ),
+      envelopes: this.envelopeApi.getEnvelopes().pipe(
+        catchError(err => { console.error('Failed to load envelopes:', err); return of([] as EnvelopeDTO[]); })
+      ),
+      transactions: this.transactionApi.getAllTransactions().pipe(
+        catchError(err => { console.error('Failed to load transactions:', err); return of([] as TransactionDTO[]); })
+      ),
     }).subscribe({
       next: ({ accounts, envelopes, transactions }) => {
         this.accounts.set(accounts);
@@ -57,7 +63,8 @@ export class DashboardStateService {
         this.transactions.set(transactions);
         this.loading.set(false);
       },
-      error: () => {
+      error: (err) => {
+        console.error('Dashboard loadAll failed:', err);
         this.loading.set(false);
       },
     });
