@@ -7,7 +7,10 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "generate-api": "openapi-generator-cli generate -i http://localhost:8080/v3/api-docs -g typescript-angular -o src/app/core/api"
+    "generate-api": "openapi-generator-cli generate -i http://localhost:8080/v3/api-docs -g typescript-angular -o src/app/core/api",
+    "deploy": "npm run build && npm run s3-sync && npm run invalidate",
+    "s3-sync": "aws s3 sync ./dist/budgetAi-frontend/browser s3://budget-ai-frontend-prod --delete --cache-control 'max-age=31536000' && aws s3 cp ./dist/budgetAi-frontend/browser/index.html s3://budget-ai-frontend-prod/index.html --metadata-directive REPLACE --cache-control 'no-cache, no-store, must-revalidate'",
+    "invalidate": "aws cloudfront create-invalidation --distribution-id E2E12XHUU72NVN --paths '/*'"
   },
   "private": true,
   "packageManager": "npm@11.9.0",
