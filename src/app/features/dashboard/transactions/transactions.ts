@@ -9,16 +9,19 @@ import {
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatSelectModule, MatSelectChange } from '@angular/material/select';
 
 import { TransactionControllerService } from '../../../core/api/api/transactionController.service';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateTransactionDialog } from './create-transaction-dialog';
+import {
+  EditTransactionDialog,
+  EditTransactionDialogResult,
+} from './edit-transaction-dialog';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
 import {
   staggerFadeIn,
@@ -31,11 +34,11 @@ import {
   selector: 'app-transactions',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DecimalPipe,
+    DatePipe,
     MatIconModule,
     MatButtonModule,
     MatDialogModule,
-    MatFormFieldModule,
-    MatSelectModule,
     SkeletonCard,
   ],
   animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
@@ -90,96 +93,42 @@ import {
     } @else {
       <div class="transactions-list" @staggerFadeIn>
         @for (transaction of filteredTransactions(); track transaction.id) {
-          <div class="transaction-card glass-card neon-border" [attr.data-txn-id]="transaction.id">
+          <div class="transaction-card glass-card neon-border"
+               [attr.data-txn-id]="transaction.id"
+               tabindex="0"
+               role="button"
+               [attr.aria-label]="'Edit transaction: ' + (transaction.description || 'Untitled') + ', ' + (transaction.amount >= 0 ? '+' : '-') + '$' + absAmount(transaction.amount)"
+               (click)="openEditDialog($event, transaction)"
+               (keydown.enter)="openEditDialog($event, transaction)">
             <div class="transaction-icon-col">
-              <button class="txn-icon-btn"
-                      [class.income]="transaction.amount > 0"
-                      (click)="toggleAmountSign(transaction)"
-                      [attr.aria-label]="transaction.amount > 0 ? 'Change to withdrawal' : 'Change to deposit'">
+              <div class="txn-icon-indicator"
+                   [class.income]="transaction.amount > 0">
                 <mat-icon>{{ transaction.amount > 0 ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
-              </button>
+              </div>
             </div>
             <div class="transaction-details">
-              <div class="editable-field description-field">
-                <label class="sr-only" [attr.for]="'txn-desc-' + transaction.id">Transaction description</label>
-                <input [id]="'txn-desc-' + transaction.id"
-                       class="inline-input description-input"
-                       type="text"
-                       [value]="transaction.description || ''"
-                       placeholder="Untitled"
-                       (blur)="onDescriptionBlur($event, transaction)"
-                       (keydown.enter)="blurTarget($event)"
-                       (keydown.escape)="revertAndBlur($event, transaction.description || '')"
-                       aria-label="Transaction description" />
-              </div>
+              <span class="txn-description">{{ transaction.description || 'Untitled' }}</span>
               <div class="txn-meta">
-                <mat-form-field class="inline-mat-field account-field" appearance="fill" subscriptSizing="dynamic">
-                  <mat-select [value]="transaction.bankAccountId"
-                              (selectionChange)="onAccountChange($event, transaction)"
-                              aria-label="Bank account"
-                              panelClass="dark-select-panel">
-                    @for (account of dashboardState.accounts(); track account.id) {
-                      <mat-option [value]="account.id">{{ account.name }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
+                <span class="txn-account-tag">{{ accountNameMap()[transaction.bankAccountId] || 'Unknown' }}</span>
                 <span class="txn-separator">&middot;</span>
-                <mat-form-field class="inline-mat-field envelope-field" appearance="fill" subscriptSizing="dynamic">
-                  <mat-select [value]="transaction.envelopeId || ''"
-                              (selectionChange)="onEnvelopeChange($event, transaction)"
-                              aria-label="Envelope"
-                              panelClass="dark-select-panel">
-                    <mat-option value="">None</mat-option>
-                    @for (envelope of dashboardState.envelopes(); track envelope.id) {
-                      <mat-option [value]="envelope.id">{{ envelope.name }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
+                <span class="txn-envelope-tag">{{ transaction.envelopeId ? (envelopeNameMap()[transaction.envelopeId] || 'Unknown') : 'No envelope' }}</span>
                 <span class="txn-separator">&middot;</span>
-                <label class="sr-only" [attr.for]="'txn-date-' + transaction.id">Transaction date</label>
-                <input [id]="'txn-date-' + transaction.id"
-                       class="inline-input date-input"
-                       type="date"
-                       [value]="transaction.transactionDate"
-                       (change)="onDateChange($event, transaction)"
-                       (blur)="onDateChange($event, transaction)"
-                       aria-label="Transaction date" />
+                <span class="txn-date">{{ formatDate(transaction.transactionDate) | date:'MMM d, yyyy' }}</span>
               </div>
             </div>
             <div class="transaction-amount-col">
-              <div class="editable-field amount-field">
-                <span class="currency-prefix"
-                      [class.income]="transaction.amount > 0"
-                      [class.expense]="transaction.amount < 0">
-                  {{ transaction.amount >= 0 ? '+$' : '-$' }}
-                </span>
-                <label class="sr-only" [attr.for]="'txn-amount-' + transaction.id">Transaction amount</label>
-                <input [id]="'txn-amount-' + transaction.id"
-                       class="inline-input amount-input"
-                       [class.income]="transaction.amount > 0"
-                       [class.expense]="transaction.amount < 0"
-                       type="number"
-                       step="0.01"
-                       min="0.01"
-                       [value]="absAmount(transaction.amount)"
-                       (blur)="onAmountBlur($event, transaction)"
-                       (keydown.enter)="blurTarget($event)"
-                       (keydown.escape)="revertAndBlur($event, absAmount(transaction.amount).toString())"
-                       aria-label="Transaction amount" />
-              </div>
+              <span class="txn-amount"
+                    [class.income]="transaction.amount > 0"
+                    [class.expense]="transaction.amount < 0">
+                {{ transaction.amount >= 0 ? '+$' : '-$' }}{{ absAmount(transaction.amount) | number:'1.2-2' }}
+              </span>
               <button mat-icon-button
                       class="delete-btn"
-                      (click)="deleteTransaction(transaction.id!)"
+                      (click)="deleteTransaction($event, transaction.id!)"
                       [attr.aria-label]="'Delete transaction ' + (transaction.description || 'Untitled')">
                 <mat-icon>delete_outline</mat-icon>
               </button>
             </div>
-
-            @if (savingId() === transaction.id) {
-              <div class="save-indicator" @fadeIn>
-                <mat-icon>sync</mat-icon>
-              </div>
-            }
           </div>
         }
       </div>
@@ -269,10 +218,16 @@ import {
       padding: 1rem 1.25rem;
       gap: 1rem;
       position: relative;
+      cursor: pointer;
       transition: transform var(--transition-fast), box-shadow var(--transition-base);
 
       &:hover {
         transform: translateY(-1px);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: 2px;
       }
     }
 
@@ -280,7 +235,7 @@ import {
       flex-shrink: 0;
     }
 
-    .txn-icon-btn {
+    .txn-icon-indicator {
       width: 40px;
       height: 40px;
       border-radius: var(--radius-md);
@@ -289,8 +244,6 @@ import {
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
-      transition: border-color var(--transition-fast), background var(--transition-fast);
 
       mat-icon {
         color: var(--danger);
@@ -306,15 +259,6 @@ import {
           color: var(--success);
         }
       }
-
-      &:hover {
-        border-color: var(--border-hover, rgba(255, 255, 255, 0.2));
-      }
-
-      &:focus-visible {
-        outline: 2px solid var(--accent-primary);
-        outline-offset: 2px;
-      }
     }
 
     .transaction-details {
@@ -322,131 +266,43 @@ import {
       min-width: 0;
     }
 
-    /* --- Inline editing shared styles --- */
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    .editable-field {
-      display: flex;
-      align-items: center;
-    }
-
-    .inline-input {
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm, 4px);
-      color: inherit;
-      font-family: inherit;
-      padding: 2px 4px;
-      transition: border-color var(--transition-fast), background var(--transition-fast);
-
-      &:hover {
-        border-color: var(--border-hover, rgba(255, 255, 255, 0.15));
-      }
-
-      &:focus {
-        outline: none;
-        border-color: var(--accent-primary);
-        background: rgba(255, 255, 255, 0.05);
-      }
-    }
-
-    /* --- Compact inline mat-form-field for selects --- */
-    .inline-mat-field {
-      width: auto;
-      max-width: 130px;
-
-      ::ng-deep {
-        .mat-mdc-form-field-subscript-wrapper {
-          display: none;
-        }
-
-        .mdc-text-field--filled {
-          background: transparent !important;
-          padding: 0 4px !important;
-          height: auto !important;
-          min-height: unset !important;
-        }
-
-        .mat-mdc-form-field-infix {
-          padding: 2px 0 !important;
-          min-height: unset !important;
-          border: none;
-        }
-
-        .mdc-text-field--filled:not(.mdc-text-field--disabled) .mdc-line-ripple::before {
-          border-bottom-color: transparent;
-        }
-
-        .mdc-text-field--filled:hover:not(.mdc-text-field--disabled) .mdc-line-ripple::before {
-          border-bottom-color: var(--border-hover, rgba(255, 255, 255, 0.15));
-        }
-
-        .mat-mdc-select {
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-
-        .mat-mdc-select-arrow-wrapper {
-          transform: scale(0.7);
-        }
-
-        .mat-mdc-form-field-focus-overlay {
-          opacity: 0 !important;
-        }
-      }
-    }
-
-    .account-field ::ng-deep .mat-mdc-select-value-text {
-      color: var(--accent-primary);
-    }
-
-    .envelope-field ::ng-deep .mat-mdc-select-value-text {
-      color: var(--accent-secondary, var(--text-secondary));
-    }
-
-    .description-input {
+    .txn-description {
       display: block;
-      width: 100%;
       font-size: 1rem;
       font-weight: 600;
       letter-spacing: -0.01em;
-
-      &::placeholder {
-        color: var(--text-muted);
-        font-weight: 400;
-      }
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .txn-meta {
       display: flex;
       align-items: center;
       gap: 0.4rem;
-      margin-top: 0.2rem;
+      margin-top: 0.25rem;
       font-size: 0.8rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .txn-account-tag {
+      color: var(--accent-primary);
+      font-weight: 500;
+    }
+
+    .txn-envelope-tag {
+      color: var(--accent-secondary, var(--text-secondary));
+      font-weight: 500;
+    }
+
+    .txn-date {
       color: var(--text-muted);
     }
 
-
-
-    .date-input {
-      font-size: 0.8rem;
+    .txn-separator {
       color: var(--text-muted);
-      max-width: 130px;
-
-      &::-webkit-calendar-picker-indicator {
-        filter: invert(0.6);
-        cursor: pointer;
-      }
+      user-select: none;
     }
 
     .transaction-amount-col {
@@ -456,38 +312,11 @@ import {
       flex-shrink: 0;
     }
 
-    .amount-field {
-      gap: 0;
-    }
-
-    .currency-prefix {
+    .txn-amount {
       font-size: 1.1rem;
       font-weight: 700;
       letter-spacing: -0.02em;
-
-      &.income {
-        color: var(--success);
-      }
-
-      &.expense {
-        color: var(--danger);
-      }
-    }
-
-    .amount-input {
-      font-size: 1.1rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      width: 80px;
-      text-align: right;
-
-      /* Hide number spinners */
-      -moz-appearance: textfield;
-      &::-webkit-outer-spin-button,
-      &::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
+      white-space: nowrap;
 
       &.income {
         color: var(--success);
@@ -510,25 +339,6 @@ import {
       &:hover {
         color: var(--danger);
       }
-    }
-
-    .save-indicator {
-      position: absolute;
-      top: 0.5rem;
-      right: 0.5rem;
-
-      mat-icon {
-        font-size: 16px;
-        width: 16px;
-        height: 16px;
-        color: var(--accent-primary);
-        animation: spin 1s linear infinite;
-      }
-    }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
     }
 
     .empty-state {
@@ -672,6 +482,49 @@ import {
         box-shadow: none;
       }
     }
+
+    /* --- Mobile responsive --- */
+    @media (max-width: 600px) {
+      .transaction-card {
+        padding: 0.75rem 1rem;
+        gap: 0.75rem;
+      }
+
+      .txn-description {
+        font-size: 0.9rem;
+      }
+
+      .txn-meta {
+        font-size: 0.75rem;
+        gap: 0.3rem;
+      }
+
+      .txn-amount {
+        font-size: 0.95rem;
+      }
+
+      .txn-icon-indicator {
+        width: 36px;
+        height: 36px;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
+
+      .delete-btn {
+        opacity: 1;
+      }
+    }
+
+    /* Touch devices: always show delete button */
+    @media (hover: none) {
+      .delete-btn {
+        opacity: 1;
+      }
+    }
   `,
 })
 export class Transactions implements OnInit {
@@ -682,7 +535,6 @@ export class Transactions implements OnInit {
   private readonly route = inject(ActivatedRoute);
 
   protected readonly deletingId = signal<string | null>(null);
-  protected readonly savingId = signal<string | null>(null);
 
   private readonly queryParams = toSignal(this.route.queryParamMap);
 
@@ -767,6 +619,19 @@ export class Transactions implements OnInit {
     }
   }
 
+  /** Returns the absolute value of an amount for display */
+  absAmount(amount: number): number {
+    return Math.abs(amount);
+  }
+
+  /** Parse a YYYY-MM-DD string into a Date for the DatePipe */
+  formatDate(dateStr: string): Date {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  // ---- Dialogs ----
+
   openCreateDialog(): void {
     const dialogRef = this.dialog.open(CreateTransactionDialog, {
       width: '440px',
@@ -780,119 +645,28 @@ export class Transactions implements OnInit {
     });
   }
 
-  /** Returns the absolute value of an amount for display in the amount input */
-  absAmount(amount: number): number {
-    return Math.abs(amount);
-  }
+  openEditDialog(event: Event, transaction: TransactionDTO): void {
+    // Prevent the edit dialog from opening when clicking the delete button
+    const target = event.target as HTMLElement;
+    if (target.closest('.delete-btn')) return;
 
-  /** Blur the input on Enter key */
-  blurTarget(event: Event): void {
-    (event.target as HTMLInputElement).blur();
-  }
+    const dialogRef = this.dialog.open(EditTransactionDialog, {
+      width: '440px',
+      panelClass: 'dark-dialog',
+      data: { transaction },
+    });
 
-  /** Revert input value and blur on Escape key */
-  revertAndBlur(event: Event, originalValue: string): void {
-    const input = event.target as HTMLInputElement;
-    input.value = originalValue;
-    input.blur();
-  }
-
-  // ---- Inline edit handlers ----
-
-  onDescriptionBlur(event: Event, transaction: TransactionDTO): void {
-    const input = event.target as HTMLInputElement;
-    const newDesc = input.value.trim();
-    // Allow empty — will display as "Untitled" placeholder
-    if (newDesc === (transaction.description || '')) return;
-    const updated: TransactionDTO = { ...transaction, description: newDesc || undefined };
-    this.saveTransaction(transaction, updated, input);
-  }
-
-  onAmountBlur(event: Event, transaction: TransactionDTO): void {
-    const input = event.target as HTMLInputElement;
-    const parsed = parseFloat(input.value);
-    if (isNaN(parsed) || parsed <= 0) {
-      input.value = this.absAmount(transaction.amount).toString();
-      return;
-    }
-    // Preserve existing sign
-    const sign = transaction.amount >= 0 ? 1 : -1;
-    const newAmount = sign * parsed;
-    if (newAmount === transaction.amount) return;
-    const updated: TransactionDTO = { ...transaction, amount: newAmount };
-    this.saveTransaction(transaction, updated, input);
-  }
-
-  toggleAmountSign(transaction: TransactionDTO): void {
-    const newAmount = -transaction.amount;
-    const updated: TransactionDTO = { ...transaction, amount: newAmount };
-    this.saveTransaction(transaction, updated);
-  }
-
-  onAccountChange(event: MatSelectChange, transaction: TransactionDTO): void {
-    const newAccountId = event.value as string;
-    if (newAccountId === transaction.bankAccountId) return;
-    const updated: TransactionDTO = { ...transaction, bankAccountId: newAccountId };
-    this.saveTransaction(transaction, updated);
-  }
-
-  onEnvelopeChange(event: MatSelectChange, transaction: TransactionDTO): void {
-    const newEnvelopeId = (event.value as string) || undefined;
-    if (newEnvelopeId === transaction.envelopeId) return;
-    const updated: TransactionDTO = { ...transaction, envelopeId: newEnvelopeId };
-    this.saveTransaction(transaction, updated);
-  }
-
-  onDateChange(event: Event, transaction: TransactionDTO): void {
-    const input = event.target as HTMLInputElement;
-    const newDate = input.value; // Already YYYY-MM-DD from type="date"
-    if (!newDate || newDate === transaction.transactionDate) return;
-    const updated: TransactionDTO = { ...transaction, transactionDate: newDate };
-    this.saveTransaction(transaction, updated, input);
-  }
-
-  // ---- Save with optimistic update + rollback ----
-
-  private saveTransaction(
-    original: TransactionDTO,
-    updated: TransactionDTO,
-    inputEl?: HTMLInputElement,
-  ): void {
-    const id = original.id!;
-    this.savingId.set(id);
-
-    // Optimistic update (adjusts balances immediately)
-    this.dashboardState.updateTransaction(id, original, updated);
-
-    this.transactionApi.updateTransaction(id, updated).subscribe({
-      next: (saved) => {
-        // Reconcile with server response
-        this.dashboardState.updateTransaction(id, updated, saved);
-        this.savingId.set(null);
-      },
-      error: () => {
-        // Rollback: reverse the optimistic update
-        this.dashboardState.updateTransaction(id, updated, original);
-
-        // Revert input value (mat-selects revert automatically via signal-driven [value])
-        if (inputEl) {
-          if (inputEl.type === 'number') {
-            inputEl.value = this.absAmount(original.amount).toString();
-          } else if (inputEl.type === 'date') {
-            inputEl.value = original.transactionDate;
-          } else {
-            inputEl.value = original.description || '';
-          }
-        }
-
-        this.savingId.set(null);
-      },
+    dialogRef.afterClosed().subscribe((result: EditTransactionDialogResult | undefined) => {
+      if (result) {
+        this.dashboardState.updateTransaction(result.saved.id!, result.original, result.saved);
+      }
     });
   }
 
   // ---- Delete flow ----
 
-  deleteTransaction(id: string): void {
+  deleteTransaction(event: Event, id: string): void {
+    event.stopPropagation();
     this.deletingId.set(id);
   }
 
