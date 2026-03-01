@@ -18,6 +18,7 @@ import { BankAccountDTO } from '../../../core/api/model/bankAccountDTO';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateAccountDialog } from './create-account-dialog';
+import { CCPaymentDialog } from './cc-payment-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
@@ -77,11 +78,29 @@ import {
     } @else {
       <div class="accounts-grid" @staggerFadeIn>
         @for (account of dashboardState.accounts(); track account.id) {
-          <div class="account-card glass-card neon-border">
+          <div class="account-card glass-card neon-border"
+               [class.credit-card-card]="account.accountType === 'CREDIT_CARD'">
             <div class="card-header">
-              <div class="card-icon">
-                <mat-icon>account_balance</mat-icon>
+              <div class="card-icon"
+                   [class.cc-icon]="account.accountType === 'CREDIT_CARD'"
+                   [class.savings-icon]="account.accountType === 'SAVINGS'">
+                @switch (account.accountType) {
+                  @case ('CREDIT_CARD') {
+                    <mat-icon>credit_card</mat-icon>
+                  }
+                  @case ('SAVINGS') {
+                    <mat-icon>savings</mat-icon>
+                  }
+                  @default {
+                    <mat-icon>account_balance</mat-icon>
+                  }
+                }
               </div>
+              @if (account.accountType === 'CREDIT_CARD') {
+                <span class="account-type-badge cc-badge">Credit Card</span>
+              } @else if (account.accountType === 'SAVINGS') {
+                <span class="account-type-badge savings-badge">Savings</span>
+              }
               <button mat-icon-button
                       class="delete-btn"
                       (click)="deleteAccount(account.id!)"
@@ -101,8 +120,11 @@ import {
                      aria-label="Account name" />
             </div>
 
-            <div class="editable-field balance-field">
-              <label class="sr-only" [attr.for]="'acct-balance-' + account.id">Current balance</label>
+            <div class="editable-field balance-field"
+                 [class.debt-balance]="account.accountType === 'CREDIT_CARD' && account.currentBalance > 0">
+              <label class="sr-only" [attr.for]="'acct-balance-' + account.id">
+                {{ account.accountType === 'CREDIT_CARD' ? 'Balance owed' : 'Current balance' }}
+              </label>
               <span class="currency-prefix">$</span>
               <input [id]="'acct-balance-' + account.id"
                      class="inline-input balance-input"
@@ -112,8 +134,11 @@ import {
                      [value]="account.currentBalance"
                      (blur)="onBalanceBlur($event, account)"
                      (keydown.enter)="blurTarget($event)"
-                     aria-label="Current balance" />
+                     [attr.aria-label]="account.accountType === 'CREDIT_CARD' ? 'Balance owed' : 'Current balance'" />
             </div>
+            @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
+              <span class="debt-label">balance owed</span>
+            }
 
             @if (account.createdAt) {
               <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
@@ -134,6 +159,16 @@ import {
               <span>{{ txnCountForAccount(account.id!) }} transactions</span>
               <mat-icon class="link-arrow">chevron_right</mat-icon>
             </button>
+
+            @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
+              <button mat-stroked-button
+                      class="make-payment-btn"
+                      (click)="openCCPaymentDialog(account)"
+                      [attr.aria-label]="'Make payment on ' + account.name">
+                <mat-icon>payments</mat-icon>
+                Make Payment
+              </button>
+            }
           </div>
 
           <ng-template cdkConnectedOverlay
@@ -261,6 +296,84 @@ import {
 
       mat-icon {
         color: var(--accent-primary);
+      }
+
+      &.cc-icon {
+        background: rgba(251, 146, 60, 0.12);
+
+        mat-icon {
+          color: #fb923c;
+        }
+      }
+
+      &.savings-icon {
+        background: rgba(74, 222, 128, 0.12);
+
+        mat-icon {
+          color: #4ade80;
+        }
+      }
+    }
+
+    .account-type-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-sm);
+      margin-left: auto;
+      margin-right: 0.25rem;
+
+      &.cc-badge {
+        background: rgba(251, 146, 60, 0.12);
+        color: #fb923c;
+      }
+
+      &.savings-badge {
+        background: rgba(74, 222, 128, 0.12);
+        color: #4ade80;
+      }
+    }
+
+    .credit-card-card {
+      border-color: rgba(251, 146, 60, 0.2);
+    }
+
+    .debt-balance {
+      .currency-prefix,
+      .balance-input {
+        color: #fb923c;
+      }
+    }
+
+    .debt-label {
+      font-size: 0.7rem;
+      color: #fb923c;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 500;
+      margin-top: -0.25rem;
+      margin-bottom: 0.25rem;
+      padding-left: 0.5rem;
+    }
+
+    .make-payment-btn {
+      width: 100%;
+      margin-top: 0.5rem;
+      color: #fb923c;
+      border-color: rgba(251, 146, 60, 0.3);
+      font-size: 0.8rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        margin-right: 0.25rem;
+      }
+
+      &:hover {
+        background: rgba(251, 146, 60, 0.08);
       }
     }
 
@@ -583,6 +696,20 @@ export class Accounts implements OnInit {
       if (result) {
         this.dashboardState.addAccount(result);
         this.dashboardState.loadTransactions();
+      }
+    });
+  }
+
+  openCCPaymentDialog(creditCard: BankAccountDTO): void {
+    const dialogRef = this.dialog.open(CCPaymentDialog, {
+      width: '440px',
+      panelClass: 'dark-dialog',
+      data: { creditCard },
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        // Dashboard already refreshed inside the dialog on success
       }
     });
   }

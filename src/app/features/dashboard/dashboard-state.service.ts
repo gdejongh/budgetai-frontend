@@ -11,6 +11,7 @@ import { EnvelopeAllocationDTO } from '../../core/api/model/envelopeAllocationDT
 import { EnvelopeCategoryDTO } from '../../core/api/model/envelopeCategoryDTO';
 import { EnvelopeDTO } from '../../core/api/model/envelopeDTO';
 import { EnvelopeSpentSummaryDTO } from '../../core/api/model/envelopeSpentSummaryDTO';
+import { CCPaymentRequest } from '../../core/api/model/ccPaymentRequest';
 import { TransactionDTO } from '../../core/api/model/transactionDTO';
 
 @Injectable({ providedIn: 'root' })
@@ -27,6 +28,16 @@ export class DashboardStateService {
   readonly transactions = signal<TransactionDTO[]>([]);
   readonly spentSummaries = signal<EnvelopeSpentSummaryDTO[]>([]);
   readonly monthlyAllocations = signal<EnvelopeAllocationDTO[]>([]);
+
+  /** Only checking & savings accounts (non-credit-card). */
+  readonly bankAccounts = computed(() =>
+    this.accounts().filter(a => a.accountType !== 'CREDIT_CARD')
+  );
+
+  /** Only credit card accounts. */
+  readonly creditCards = computed(() =>
+    this.accounts().filter(a => a.accountType === 'CREDIT_CARD')
+  );
 
   /** The currently viewed month, as 'YYYY-MM-DD' (first of month). */
   readonly viewedMonth = signal(this.getCurrentMonthStr());
@@ -54,9 +65,11 @@ export class DashboardStateService {
     return { startDate, endDate };
   });
 
-  readonly totalBankBalance = computed(() =>
-    this.accounts().reduce((sum, a) => sum + (a.currentBalance ?? 0), 0)
-  );
+  readonly totalBankBalance = computed(() => {
+    const bankSum = this.bankAccounts().reduce((sum, a) => sum + (a.currentBalance ?? 0), 0);
+    const ccDebt = this.creditCards().reduce((sum, a) => sum + (a.currentBalance ?? 0), 0);
+    return bankSum - ccDebt;
+  });
 
   readonly totalEnvelopeAllocation = computed(() =>
     this.envelopes().reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0)
@@ -199,15 +212,40 @@ export class DashboardStateService {
 
   addTransaction(transaction: TransactionDTO): void {
     this.transactions.update(current => [transaction, ...current]);
-    this.adjustAccountBalance(transaction.bankAccountId, transaction.amount);
+    const account = this.accounts().find(a => a.id === transaction.bankAccountId);
+    const isCreditCard = account?.accountType === 'CREDIT_CARD';
+    // CC balance inversion: a purchase (negative amount) increases CC debt (positive balance)
+    const balanceChange = isCreditCard ? -transaction.amount : transaction.amount;
+    this.adjustAccountBalance(transaction.bankAccountId, balanceChange);
     this.loadSpentSummaries();
   }
 
   removeTransaction(id: string): void {
     const transaction = this.transactions().find(t => t.id === id);
-    this.transactions.update(current => current.filter(t => t.id !== id));
     if (transaction) {
-      this.adjustAccountBalance(transaction.bankAccountId, -transaction.amount);
+      // If this is a CC_PAYMENT, also remove the linked transaction
+      if (transaction.transactionType === 'CC_PAYMENT' && transaction.linkedTransactionId) {
+        const linked = this.transactions().find(t => t.id === transaction.linkedTransactionId);
+        this.transactions.update(current =>
+          current.filter(t => t.id !== id && t.id !== transaction.linkedTransactionId)
+        );
+        // Revert both balances
+        const account = this.accounts().find(a => a.id === transaction.bankAccountId);
+        const isCreditCard = account?.accountType === 'CREDIT_CARD';
+        this.adjustAccountBalance(transaction.bankAccountId, isCreditCard ? transaction.amount : -transaction.amount);
+        if (linked) {
+          const linkedAccount = this.accounts().find(a => a.id === linked.bankAccountId);
+          const linkedIsCreditCard = linkedAccount?.accountType === 'CREDIT_CARD';
+          this.adjustAccountBalance(linked.bankAccountId, linkedIsCreditCard ? linked.amount : -linked.amount);
+        }
+      } else {
+        this.transactions.update(current => current.filter(t => t.id !== id));
+        const account = this.accounts().find(a => a.id === transaction.bankAccountId);
+        const isCreditCard = account?.accountType === 'CREDIT_CARD';
+        this.adjustAccountBalance(transaction.bankAccountId, isCreditCard ? transaction.amount : -transaction.amount);
+      }
+    } else {
+      this.transactions.update(current => current.filter(t => t.id !== id));
     }
     this.loadSpentSummaries();
   }
@@ -221,17 +259,44 @@ export class DashboardStateService {
     const newAccountId = newTxn.bankAccountId;
     const oldAmount = oldTxn.amount;
     const newAmount = newTxn.amount;
-    const amountDiff = newAmount - oldAmount;
+
+    const oldAccount = this.accounts().find(a => a.id === oldAccountId);
+    const newAccount = this.accounts().find(a => a.id === newAccountId);
+    const oldIsCreditCard = oldAccount?.accountType === 'CREDIT_CARD';
+    const newIsCreditCard = newAccount?.accountType === 'CREDIT_CARD';
 
     // --- Bank Account balance adjustments ---
     if (oldAccountId !== newAccountId) {
-      this.adjustAccountBalance(oldAccountId, -oldAmount);
-      this.adjustAccountBalance(newAccountId, newAmount);
-    } else if (amountDiff !== 0) {
-      this.adjustAccountBalance(oldAccountId, amountDiff);
+      this.adjustAccountBalance(oldAccountId, oldIsCreditCard ? oldAmount : -oldAmount);
+      this.adjustAccountBalance(newAccountId, newIsCreditCard ? -newAmount : newAmount);
+    } else {
+      const amountDiff = newAmount - oldAmount;
+      if (amountDiff !== 0) {
+        this.adjustAccountBalance(oldAccountId, oldIsCreditCard ? -amountDiff : amountDiff);
+      }
     }
 
     this.loadSpentSummaries();
+  }
+
+  /**
+   * Optimistically update state after a CC payment.
+   * Adds both the bank-side and CC-side transactions, adjusts both balances.
+   */
+  addCCPayment(bankTransaction: TransactionDTO, ccTransaction: TransactionDTO): void {
+    this.transactions.update(current => [bankTransaction, ccTransaction, ...current]);
+    // Bank side: negative amount decreases bank balance
+    this.adjustAccountBalance(bankTransaction.bankAccountId, bankTransaction.amount);
+    // CC side: positive amount (from backend) decreases CC debt
+    // Since CC balance is stored as positive = debt, a positive CC_PAYMENT amount reduces debt
+    this.adjustAccountBalance(ccTransaction.bankAccountId, -ccTransaction.amount);
+    this.loadSpentSummaries();
+  }
+
+  /** Check if an account is a credit card by its ID. */
+  isCreditCard(accountId: string): boolean {
+    const account = this.accounts().find(a => a.id === accountId);
+    return account?.accountType === 'CREDIT_CARD';
   }
 
   private adjustAccountBalance(accountId: string, amount: number): void {

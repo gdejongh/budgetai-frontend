@@ -17,6 +17,8 @@ export interface TransactionDTO {
     amount: number;
     description?: string;
     transactionDate: string;
+    transactionType?: string;
+    linkedTransactionId?: string;
     createdAt?: string;
 }
 

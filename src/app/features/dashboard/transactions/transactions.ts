@@ -189,10 +189,23 @@ type SortDirection = 'asc' | 'desc';
                     (click)="openEditDialog($event, transaction)"
                     (keydown.enter)="openEditDialog($event, transaction)">
                   <td class="col-description">
-                    <span class="cell-description">{{ transaction.description || 'Untitled' }}</span>
+                    <div class="description-cell">
+                      <span class="cell-description">{{ transaction.description || 'Untitled' }}</span>
+                      @if (transaction.transactionType === 'CC_PAYMENT') {
+                        <span class="cc-payment-badge" title="Credit card payment">
+                          <mat-icon>link</mat-icon>
+                          CC Payment
+                        </span>
+                      }
+                    </div>
                   </td>
                   <td class="col-account">
-                    <span class="cell-account">{{ accountNameMap()[transaction.bankAccountId] || 'Unknown' }}</span>
+                    <span class="cell-account">
+                      @if (isAccountCreditCard(transaction.bankAccountId)) {
+                        <mat-icon class="account-type-icon cc-icon-inline">credit_card</mat-icon>
+                      }
+                      {{ accountNameMap()[transaction.bankAccountId] || 'Unknown' }}
+                    </span>
                   </td>
                   <td class="col-envelope">
                     <span class="cell-envelope">{{ transaction.envelopeId ? (envelopeNameMap()[transaction.envelopeId] || 'Unknown') : 'No envelope' }}</span>
@@ -270,7 +283,11 @@ type SortDirection = 'asc' | 'desc';
         <div class="confirm-card glass-card" (click)="$event.stopPropagation()">
           <mat-icon class="confirm-icon">warning_amber</mat-icon>
           <h3>Delete Transaction?</h3>
-          <p>This action cannot be undone.</p>
+          @if (isDeletingCCPayment()) {
+            <p>This is a credit card payment. Both the bank and credit card sides will be deleted.</p>
+          } @else {
+            <p>This action cannot be undone.</p>
+          }
           <div class="confirm-actions">
             <button mat-button (click)="cancelDelete()">Cancel</button>
             <button mat-flat-button color="warn" (click)="confirmDelete()">
@@ -794,6 +811,47 @@ type SortDirection = 'asc' | 'desc';
         opacity: 1;
       }
     }
+
+    /* ---- CC Payment badge ---- */
+    .description-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .cc-payment-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-sm);
+      background: rgba(251, 146, 60, 0.12);
+      color: #fb923c;
+      white-space: nowrap;
+      flex-shrink: 0;
+
+      mat-icon {
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    .account-type-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      vertical-align: middle;
+      margin-right: 4px;
+
+      &.cc-icon-inline {
+        color: #fb923c;
+      }
+    }
   `,
 })
 export class Transactions implements OnInit {
@@ -834,6 +892,25 @@ export class Transactions implements OnInit {
     }
     return map;
   });
+
+  private readonly accountTypeMap = computed(() => {
+    const map: Record<string, string> = {};
+    for (const a of this.dashboardState.accounts()) {
+      if (a.id) map[a.id] = a.accountType ?? 'CHECKING';
+    }
+    return map;
+  });
+
+  protected readonly isDeletingCCPayment = computed(() => {
+    const id = this.deletingId();
+    if (!id) return false;
+    const txn = this.dashboardState.transactions().find(t => t.id === id);
+    return txn?.transactionType === 'CC_PAYMENT';
+  });
+
+  isAccountCreditCard(accountId: string): boolean {
+    return this.accountTypeMap()[accountId] === 'CREDIT_CARD';
+  }
 
   protected readonly envelopeNameMap = computed(() => {
     const map: Record<string, string> = {};
@@ -1036,6 +1113,9 @@ export class Transactions implements OnInit {
     // Prevent the edit dialog from opening when clicking the delete button
     const target = event.target as HTMLElement;
     if (target.closest('.delete-btn')) return;
+
+    // CC_PAYMENT transactions are system-managed linked pairs and cannot be edited
+    if (transaction.transactionType === 'CC_PAYMENT') return;
 
     const dialogRef = this.dialog.open(EditTransactionDialog, {
       width: '440px',

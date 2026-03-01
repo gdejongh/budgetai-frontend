@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   inject,
   signal,
+  computed,
 } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -11,6 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 
 import { BankAccountControllerService } from '../../../core/api/api/bankAccountController.service';
 import { CreateBankAccountRequest } from '../../../core/api/model/createBankAccountRequest';
@@ -26,6 +28,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatIconModule,
     MatProgressSpinnerModule,
   ],
@@ -33,8 +36,8 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
   template: `
     <div class="dialog-container" @fadeIn>
       <h2 mat-dialog-title class="dialog-title">
-        <mat-icon class="title-icon">account_balance</mat-icon>
-        <span class="gradient-text">New Bank Account</span>
+        <mat-icon class="title-icon">{{ titleIcon() }}</mat-icon>
+        <span class="gradient-text">{{ titleText() }}</span>
       </h2>
 
       <mat-dialog-content>
@@ -46,9 +49,30 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
         }
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" id="create-account-form">
+          <div class="account-type-toggle">
+            <label class="toggle-label" id="account-type-label">Account Type</label>
+            <mat-button-toggle-group formControlName="accountType"
+                                     aria-labelledby="account-type-label"
+                                     class="type-toggle-group">
+              <mat-button-toggle value="CHECKING">
+                <mat-icon>account_balance</mat-icon>
+                Checking
+              </mat-button-toggle>
+              <mat-button-toggle value="SAVINGS">
+                <mat-icon>savings</mat-icon>
+                Savings
+              </mat-button-toggle>
+              <mat-button-toggle value="CREDIT_CARD">
+                <mat-icon>credit_card</mat-icon>
+                Credit Card
+              </mat-button-toggle>
+            </mat-button-toggle-group>
+          </div>
+
           <mat-form-field appearance="fill">
             <mat-label>Account Name</mat-label>
-            <input matInput formControlName="name" placeholder="e.g. Checking Account"
+            <input matInput formControlName="name"
+                   [placeholder]="namePlaceholder()"
                    autocomplete="off" />
             @if (form.controls.name.hasError('required') && form.controls.name.touched) {
               <mat-error>Account name is required</mat-error>
@@ -56,7 +80,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
           </mat-form-field>
 
           <mat-form-field appearance="fill">
-            <mat-label>Current Balance</mat-label>
+            <mat-label>{{ balanceLabel() }}</mat-label>
             <span matTextPrefix>$&nbsp;</span>
             <input matInput type="number" formControlName="currentBalance"
                    placeholder="0.00" step="0.01" min="0"
@@ -168,6 +192,35 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
         display: inline-block;
       }
     }
+
+    .account-type-toggle {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .toggle-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .type-toggle-group {
+      width: 100%;
+
+      mat-button-toggle {
+        flex: 1;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          margin-right: 4px;
+          vertical-align: middle;
+        }
+      }
+    }
   `,
 })
 export class CreateAccountDialog {
@@ -178,10 +231,38 @@ export class CreateAccountDialog {
 
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
+  protected readonly accountType = signal('CHECKING');
 
   protected readonly form = this.fb.nonNullable.group({
+    accountType: ['CHECKING'],
     name: ['', Validators.required],
     currentBalance: [0, [Validators.required, Validators.min(0)]],
+  });
+
+  constructor() {
+    this.form.controls.accountType.valueChanges.subscribe(type => {
+      this.accountType.set(type);
+    });
+  }
+
+  protected readonly titleIcon = computed(() =>
+    this.accountType() === 'CREDIT_CARD' ? 'credit_card' : 'account_balance'
+  );
+
+  protected readonly titleText = computed(() =>
+    this.accountType() === 'CREDIT_CARD' ? 'New Credit Card' : 'New Bank Account'
+  );
+
+  protected readonly balanceLabel = computed(() =>
+    this.accountType() === 'CREDIT_CARD' ? 'Current Balance Owed' : 'Current Balance'
+  );
+
+  protected readonly namePlaceholder = computed(() => {
+    switch (this.accountType()) {
+      case 'CREDIT_CARD': return 'e.g. Visa Rewards';
+      case 'SAVINGS': return 'e.g. Savings Account';
+      default: return 'e.g. Checking Account';
+    }
   });
 
   onSubmit(): void {
@@ -193,6 +274,7 @@ export class CreateAccountDialog {
     const dto: CreateBankAccountRequest = {
       name: this.form.value.name!,
       currentBalance: this.form.value.currentBalance!,
+      accountType: this.form.value.accountType!,
     };
 
     this.bankAccountApi.createBankAccount(dto).subscribe({

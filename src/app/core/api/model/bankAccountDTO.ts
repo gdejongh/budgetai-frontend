@@ -13,6 +13,7 @@ export interface BankAccountDTO {
     id?: string;
     appUserId: string;
     name: string;
+    accountType?: string;
     currentBalance: number;
     createdAt?: string;
 }

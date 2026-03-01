@@ -59,20 +59,20 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
                   [class.active]="transactionType() === 'deposit'"
                   role="radio"
                   [attr.aria-checked]="transactionType() === 'deposit'"
-                  aria-label="Deposit"
+                  [attr.aria-label]="isCreditCard() ? 'Refund' : 'Deposit'"
                   (click)="transactionType.set('deposit')">
             <mat-icon>arrow_downward</mat-icon>
-            Deposit
+            {{ isCreditCard() ? 'Refund' : 'Deposit' }}
           </button>
           <button type="button"
                   class="toggle-btn withdrawal"
                   [class.active]="transactionType() === 'withdrawal'"
                   role="radio"
                   [attr.aria-checked]="transactionType() === 'withdrawal'"
-                  aria-label="Withdrawal"
+                  [attr.aria-label]="isCreditCard() ? 'Purchase' : 'Withdrawal'"
                   (click)="transactionType.set('withdrawal')">
             <mat-icon>arrow_upward</mat-icon>
-            Withdrawal
+            {{ isCreditCard() ? 'Purchase' : 'Withdrawal' }}
           </button>
         </div>
 
@@ -85,14 +85,27 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" id="create-transaction-form">
           <mat-form-field appearance="fill">
-            <mat-label>Bank Account</mat-label>
+            <mat-label>Account</mat-label>
             <mat-select formControlName="bankAccountId">
               @for (account of dashboardState.accounts(); track account.id) {
-                <mat-option [value]="account.id">{{ account.name }}</mat-option>
+                <mat-option [value]="account.id">
+                  @switch (account.accountType) {
+                    @case ('CREDIT_CARD') {
+                      <mat-icon class="option-icon cc-option">credit_card</mat-icon>
+                    }
+                    @case ('SAVINGS') {
+                      <mat-icon class="option-icon savings-option">savings</mat-icon>
+                    }
+                    @default {
+                      <mat-icon class="option-icon">account_balance</mat-icon>
+                    }
+                  }
+                  {{ account.name }}
+                </mat-option>
               }
             </mat-select>
             @if (form.controls.bankAccountId.hasError('required') && form.controls.bankAccountId.touched) {
-              <mat-error>Bank account is required</mat-error>
+              <mat-error>Account is required</mat-error>
             }
           </mat-form-field>
 
@@ -154,7 +167,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
           } @else {
             <ng-container>
               <mat-icon>{{ transactionType() === 'deposit' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
-              {{ transactionType() === 'deposit' ? 'Add Deposit' : 'Add Withdrawal' }}
+              {{ submitLabel() }}
             </ng-container>
           }
         </button>
@@ -268,6 +281,19 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
     mat-dialog-content { padding-top: 0.5rem; }
     form { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    .option-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      vertical-align: middle;
+      color: var(--text-muted);
+
+      &.cc-option { color: #fb923c; }
+      &.savings-option { color: #4ade80; }
+    }
+
     .error-banner { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;
       margin-bottom: 1rem; border-radius: var(--radius-sm);
       background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3);
@@ -290,10 +316,27 @@ export class CreateTransactionDialog {
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
   protected readonly transactionType = signal<'deposit' | 'withdrawal'>('withdrawal');
+  protected readonly selectedAccountId = signal('');
 
-  protected readonly dialogTitle = computed(() =>
-    this.transactionType() === 'deposit' ? 'New Deposit' : 'New Withdrawal'
-  );
+  protected readonly isCreditCard = computed(() => {
+    const id = this.selectedAccountId();
+    if (!id) return false;
+    return this.dashboardState.isCreditCard(id);
+  });
+
+  protected readonly dialogTitle = computed(() => {
+    if (this.isCreditCard()) {
+      return this.transactionType() === 'deposit' ? 'CC Refund' : 'CC Purchase';
+    }
+    return this.transactionType() === 'deposit' ? 'New Deposit' : 'New Withdrawal';
+  });
+
+  protected readonly submitLabel = computed(() => {
+    if (this.isCreditCard()) {
+      return this.transactionType() === 'deposit' ? 'Add Refund' : 'Add Purchase';
+    }
+    return this.transactionType() === 'deposit' ? 'Add Deposit' : 'Add Withdrawal';
+  });
 
   private readonly glowEffect = effect(() => {
     const type = this.transactionType();
@@ -313,6 +356,12 @@ export class CreateTransactionDialog {
     transactionDate: [new Date(), Validators.required],
     envelopeId: [''],
   });
+
+  constructor() {
+    this.form.controls.bankAccountId.valueChanges.subscribe(id => {
+      this.selectedAccountId.set(id);
+    });
+  }
 
   onAmountFocus(): void {
     const ctrl = this.form.controls.amount;

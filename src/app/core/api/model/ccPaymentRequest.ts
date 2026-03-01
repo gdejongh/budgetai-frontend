@@ -9,9 +9,10 @@
  */
 
 
-export interface CreateBankAccountRequest { 
-    name: string;
-    accountType?: string;
-    currentBalance: number;
+export interface CCPaymentRequest { 
+    bankAccountId: string;
+    creditCardId: string;
+    amount: number;
+    description?: string;
+    transactionDate: string;
 }
-

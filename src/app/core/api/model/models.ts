@@ -1,6 +1,7 @@
 export * from './appUserDTO';
 export * from './authResponseDTO';
 export * from './bankAccountDTO';
+export * from './ccPaymentRequest';
 export * from './createBankAccountRequest';
 export * from './createEnvelopeCategoryRequest';
 export * from './createEnvelopeRequest';
