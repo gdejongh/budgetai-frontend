@@ -19,10 +19,13 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
+import { EnvelopeCategoryControllerService } from '../../../core/api/api/envelopeCategoryController.service';
 import { EnvelopeDTO } from '../../../core/api/model/envelopeDTO';
+import { EnvelopeCategoryDTO } from '../../../core/api/model/envelopeCategoryDTO';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService, SpentTimePeriod } from '../dashboard-state.service';
-import { CreateEnvelopeDialog } from './create-envelope-dialog';
+import { CreateEnvelopeDialog, CreateEnvelopeDialogData } from './create-envelope-dialog';
+import { CreateCategoryDialog } from './create-category-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
@@ -90,13 +93,13 @@ import {
     } @else {
     
 
-      @if (dashboardState.envelopes().length === 0) {
+      @if (dashboardState.envelopeCategories().length === 0) {
         <div class="empty-state glass-card" @scaleBounce>
-          <mat-icon>mail</mat-icon>
-          <h2>No envelopes yet</h2>
-          <p>Create your first envelope to allocate funds and stay within budget.</p>
-          <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
-            Create Your First Envelope
+          <mat-icon>category</mat-icon>
+          <h2>No categories yet</h2>
+          <p>Create your first category to organize your envelopes.</p>
+          <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateCategoryDialog()">
+            Create Your First Category
           </button>
         </div>
       } @else {
@@ -112,126 +115,192 @@ import {
           </mat-button-toggle-group>
         </div>
 
-        <div class="envelopes-grid" @staggerFadeIn>
-          @for (envelope of dashboardState.envelopes(); track envelope.id) {
-            <div
-              class="envelope-card glass-card neon-border"
-              [class.envelope-negative]="remainingForEnvelope(envelope.id!) < 0"
-            >
-              <div class="card-header">
-                <div class="card-icon">
-                  <mat-icon>mail</mat-icon>
-                </div>
-                <button mat-icon-button
-                        class="delete-btn"
-                        (click)="deleteEnvelope(envelope.id!)"
-                        [attr.aria-label]="'Delete envelope ' + envelope.name">
-                  <mat-icon>delete_outline</mat-icon>
+        <div class="categories-list" @staggerFadeIn>
+          @for (category of dashboardState.envelopeCategories(); track category.id) {
+            <section class="category-section glass-card neon-border">
+              <div class="category-header" (click)="toggleCategory(category.id!)">
+                <button class="collapse-toggle" mat-icon-button
+                        [attr.aria-expanded]="!isCategoryCollapsed(category.id!)"
+                        [attr.aria-label]="'Toggle ' + category.name">
+                  <mat-icon>{{ isCategoryCollapsed(category.id!) ? 'expand_more' : 'expand_less' }}</mat-icon>
                 </button>
-              </div>
-
-              <div class="editable-field name-field">
-                <label class="sr-only" [attr.for]="'name-' + envelope.id">Envelope name</label>
-                <input [id]="'name-' + envelope.id"
-                       class="inline-input name-input"
-                       type="text"
-                       [value]="envelope.name"
-                       (blur)="onNameBlur($event, envelope)"
-                       (keydown.enter)="blurTarget($event)"
-                       aria-label="Envelope name" />
-              </div>
-
-              <div class="envelope-finances">
-                  <!-- Remaining: now at top, larger, with progress bar and warning icon -->
-                  <div class="finance-row remaining-row" style="margin-bottom: 0.5rem;">
-                    <span class="finance-label" style="font-size:1rem;font-weight:700;">Remaining</span>
-                    <span class="finance-value remaining-value"
-                          [class.remaining-positive]="remainingForEnvelope(envelope.id!) >= 0"
-                          [class.remaining-negative]="remainingForEnvelope(envelope.id!) < 0"
-                          style="font-size:1.35rem;font-weight:900;display:flex;align-items:center;gap:0.4rem;"
-                          aria-live="polite"
-                          [attr.aria-label]="'Remaining: ' + (remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2')">
-                      {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
-                      @if (remainingForEnvelope(envelope.id!) < 0) {
-                        <mat-icon class="remaining-warning" aria-label="Overspent">warning_amber</mat-icon>
-                      }
-                    </span>
+                <div class="category-name-area">
+                  <div class="editable-field category-name-field" (click)="$event.stopPropagation()">
+                    <label class="sr-only" [attr.for]="'cat-name-' + category.id">Category name</label>
+                    <input [id]="'cat-name-' + category.id"
+                           class="inline-input category-name-input"
+                           type="text"
+                           [value]="category.name"
+                           (blur)="onCategoryNameBlur($event, category)"
+                           (keydown.enter)="blurTarget($event)"
+                           aria-label="Category name" />
                   </div>
-                  <!-- Progress bar for remaining/allocated -->
-                  <div class="remaining-progress-bar" role="progressbar"
-                       [attr.aria-valuenow]="percentRemaining(envelope)"
-                       aria-valuemin="0" aria-valuemax="100"
-                       [attr.aria-label]="'Remaining funds: ' + percentRemaining(envelope) + '%'">
-                    <div class="progress-track">
-                      <div class="progress-fill"
-                           [style.width]="percentRemaining(envelope) + '%'"
-                           [class.negative]="remainingForEnvelope(envelope.id!) < 0"
-                           [class.low]="remainingForEnvelope(envelope.id!) <= envelope.allocatedBalance * 0.1"
-                      ></div>
-                    </div>
-                  </div>
-                  <div class="finance-row allocated-row">
-                      <span class="finance-label">Allocated</span>
-                      <div class="editable-field balance-field">
-                        <label class="sr-only" [attr.for]="'balance-' + envelope.id">Allocated balance</label>
-                        <span class="currency-prefix">$</span>
-                        <div class="allocated-input-wrapper">
-                          <input [id]="'balance-' + envelope.id"
-                                 class="inline-input balance-input editable-highlight"
-                                 type="number"
-                                 step="0.01"
-                                 min="0"
-                                 [value]="envelope.allocatedBalance"
-                                 (blur)="onBalanceBlur($event, envelope)"
-                                 (keydown.enter)="blurTarget($event)"
-                                 aria-label="Allocated balance"
-                                 title="Edit allocated amount" />
-                          <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
-                        </div>
-                      </div>
-                  </div>
-                  <div class="finance-row spent-row">
-                    <span class="finance-label">Spent</span>
-                    <span class="finance-value spent-value">{{ spentForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
-                  </div>
-              </div>
-
-              @if (envelope.createdAt) {
-                <span class="card-date">Created {{ envelope.createdAt | date: 'mediumDate' }}</span>
-              }
-
-              @if (savingId() === envelope.id) {
-                <div class="save-indicator" @fadeIn>
-                  <mat-icon>sync</mat-icon>
                 </div>
+                <div class="category-summary">
+                  <span class="cat-stat">
+                    <span class="cat-stat-label">Allocated</span>
+                    <span class="cat-stat-value">{{ categoryAllocated(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                  </span>
+                  <span class="cat-stat">
+                    <span class="cat-stat-label">Spent</span>
+                    <span class="cat-stat-value spent-value">{{ categorySpent(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                  </span>
+                  <span class="cat-stat">
+                    <span class="cat-stat-label">Remaining</span>
+                    <span class="cat-stat-value"
+                          [class.remaining-positive]="categoryRemaining(category.id!) >= 0"
+                          [class.remaining-negative]="categoryRemaining(category.id!) < 0">
+                      {{ categoryRemaining(category.id!) | currency:'USD':'symbol':'1.2-2' }}
+                    </span>
+                  </span>
+                </div>
+                <div class="category-actions" (click)="$event.stopPropagation()">
+                  <button mat-icon-button
+                          (click)="openCreateEnvelopeDialog(category.id!)"
+                          [attr.aria-label]="'Add envelope to ' + category.name">
+                    <mat-icon>add</mat-icon>
+                  </button>
+                  <button mat-icon-button
+                          class="delete-btn"
+                          (click)="deleteCategory(category.id!)"
+                          [attr.aria-label]="'Delete category ' + category.name">
+                    <mat-icon>delete_outline</mat-icon>
+                  </button>
+                </div>
+              </div>
+
+              @if (!isCategoryCollapsed(category.id!)) {
+                @if (envelopesForCategory(category.id!).length === 0) {
+                  <div class="category-empty">
+                    <p>No envelopes in this category yet.</p>
+                    <button mat-stroked-button (click)="openCreateEnvelopeDialog(category.id!)">
+                      <mat-icon>add</mat-icon> Add Envelope
+                    </button>
+                  </div>
+                } @else {
+                  <div class="envelopes-grid">
+                    @for (envelope of envelopesForCategory(category.id!); track envelope.id) {
+                      <div
+                        class="envelope-card glass-card neon-border"
+                        [class.envelope-negative]="remainingForEnvelope(envelope.id!) < 0"
+                      >
+                        <div class="card-header">
+                          <div class="card-icon">
+                            <mat-icon>mail</mat-icon>
+                          </div>
+                          <button mat-icon-button
+                                  class="delete-btn"
+                                  (click)="deleteEnvelope(envelope.id!)"
+                                  [attr.aria-label]="'Delete envelope ' + envelope.name">
+                            <mat-icon>delete_outline</mat-icon>
+                          </button>
+                        </div>
+
+                        <div class="editable-field name-field">
+                          <label class="sr-only" [attr.for]="'name-' + envelope.id">Envelope name</label>
+                          <input [id]="'name-' + envelope.id"
+                                 class="inline-input name-input"
+                                 type="text"
+                                 [value]="envelope.name"
+                                 (blur)="onNameBlur($event, envelope)"
+                                 (keydown.enter)="blurTarget($event)"
+                                 aria-label="Envelope name" />
+                        </div>
+
+                        <div class="envelope-finances">
+                            <div class="finance-row remaining-row" style="margin-bottom: 0.5rem;">
+                              <span class="finance-label" style="font-size:1rem;font-weight:700;">Remaining</span>
+                              <span class="finance-value remaining-value"
+                                    [class.remaining-positive]="remainingForEnvelope(envelope.id!) >= 0"
+                                    [class.remaining-negative]="remainingForEnvelope(envelope.id!) < 0"
+                                    style="font-size:1.35rem;font-weight:900;display:flex;align-items:center;gap:0.4rem;"
+                                    aria-live="polite"
+                                    [attr.aria-label]="'Remaining: ' + (remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2')">
+                                {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
+                                @if (remainingForEnvelope(envelope.id!) < 0) {
+                                  <mat-icon class="remaining-warning" aria-label="Overspent">warning_amber</mat-icon>
+                                }
+                              </span>
+                            </div>
+                            <div class="remaining-progress-bar" role="progressbar"
+                                 [attr.aria-valuenow]="percentRemaining(envelope)"
+                                 aria-valuemin="0" aria-valuemax="100"
+                                 [attr.aria-label]="'Remaining funds: ' + percentRemaining(envelope) + '%'">
+                              <div class="progress-track">
+                                <div class="progress-fill"
+                                     [style.width]="percentRemaining(envelope) + '%'"
+                                     [class.negative]="remainingForEnvelope(envelope.id!) < 0"
+                                     [class.low]="remainingForEnvelope(envelope.id!) <= envelope.allocatedBalance * 0.1"
+                                ></div>
+                              </div>
+                            </div>
+                            <div class="finance-row allocated-row">
+                                <span class="finance-label">Allocated</span>
+                                <div class="editable-field balance-field">
+                                  <label class="sr-only" [attr.for]="'balance-' + envelope.id">Allocated balance</label>
+                                  <span class="currency-prefix">$</span>
+                                  <div class="allocated-input-wrapper">
+                                    <input [id]="'balance-' + envelope.id"
+                                           class="inline-input balance-input editable-highlight"
+                                           type="number"
+                                           step="0.01"
+                                           min="0"
+                                           [value]="envelope.allocatedBalance"
+                                           (blur)="onBalanceBlur($event, envelope)"
+                                           (keydown.enter)="blurTarget($event)"
+                                           aria-label="Allocated balance"
+                                           title="Edit allocated amount" />
+                                    <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
+                                  </div>
+                                </div>
+                            </div>
+                            <div class="finance-row spent-row">
+                              <span class="finance-label">Spent</span>
+                              <span class="finance-value spent-value">{{ spentForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                            </div>
+                        </div>
+
+                        @if (envelope.createdAt) {
+                          <span class="card-date">Created {{ envelope.createdAt | date: 'mediumDate' }}</span>
+                        }
+
+                        @if (savingId() === envelope.id) {
+                          <div class="save-indicator" @fadeIn>
+                            <mat-icon>sync</mat-icon>
+                          </div>
+                        }
+
+                        <button class="view-txn-link"
+                                cdkOverlayOrigin
+                                #iconOrigin="cdkOverlayOrigin"
+                                (click)="togglePreview(envelope.id!)"
+                                [attr.aria-label]="'View transactions for ' + envelope.name">
+                          <mat-icon>receipt_long</mat-icon>
+                          <span>{{ txnCountForEnvelope(envelope.id!) }} transactions</span>
+                          <mat-icon class="link-arrow">chevron_right</mat-icon>
+                        </button>
+                      </div>
+
+                      <ng-template cdkConnectedOverlay
+                                   [cdkConnectedOverlayOrigin]="iconOrigin"
+                                   [cdkConnectedOverlayOpen]="activePreviewId() === envelope.id"
+                                   [cdkConnectedOverlayHasBackdrop]="true"
+                                   cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                                   (backdropClick)="closePreview()"
+                                   (detach)="closePreview()"
+                                   [cdkConnectedOverlayPositions]="previewPositions">
+                        <app-transaction-preview
+                          [transactions]="previewTransactions()"
+                          [entityName]="previewEntityName()"
+                          [totalCount]="previewTotalCount()"
+                          (selectTransaction)="onPreviewSelectTransaction($event)"
+                          (viewAll)="onPreviewViewAll()" />
+                      </ng-template>
+                    }
+                  </div>
+                }
               }
-
-              <button class="view-txn-link"
-                      cdkOverlayOrigin
-                      #iconOrigin="cdkOverlayOrigin"
-                      (click)="togglePreview(envelope.id!)"
-                      [attr.aria-label]="'View transactions for ' + envelope.name">
-                <mat-icon>receipt_long</mat-icon>
-                <span>{{ txnCountForEnvelope(envelope.id!) }} transactions</span>
-                <mat-icon class="link-arrow">chevron_right</mat-icon>
-              </button>
-            </div>
-
-            <ng-template cdkConnectedOverlay
-                         [cdkConnectedOverlayOrigin]="iconOrigin"
-                         [cdkConnectedOverlayOpen]="activePreviewId() === envelope.id"
-                         [cdkConnectedOverlayHasBackdrop]="true"
-                         cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                         (backdropClick)="closePreview()"
-                         (detach)="closePreview()"
-                         [cdkConnectedOverlayPositions]="previewPositions">
-              <app-transaction-preview
-                [transactions]="previewTransactions()"
-                [entityName]="previewEntityName()"
-                [totalCount]="previewTotalCount()"
-                (selectTransaction)="onPreviewSelectTransaction($event)"
-                (viewAll)="onPreviewViewAll()" />
-            </ng-template>
+            </section>
           }
         </div>
       }
@@ -240,8 +309,8 @@ import {
     <button mat-fab
             color="primary"
             class="fab-add"
-            (click)="openCreateDialog()"
-            aria-label="Create new envelope">
+            (click)="openCreateCategoryDialog()"
+            aria-label="Create new category">
       <mat-icon>add</mat-icon>
     </button>
 
@@ -251,11 +320,16 @@ import {
            (keydown.escape)="cancelDelete()"
            @slideInUp
            role="dialog"
-           aria-label="Confirm deletion">
+           [attr.aria-label]="deletingType() === 'category' ? 'Confirm category deletion' : 'Confirm envelope deletion'">
         <div class="confirm-card glass-card" (click)="$event.stopPropagation()">
           <mat-icon class="confirm-icon">warning_amber</mat-icon>
-          <h3>Delete Envelope?</h3>
-          <p>This action cannot be undone. All associated data will be lost.</p>
+          @if (deletingType() === 'category') {
+            <h3>Delete Category?</h3>
+            <p>This will delete the category and all envelopes within it. This action cannot be undone.</p>
+          } @else {
+            <h3>Delete Envelope?</h3>
+            <p>This action cannot be undone. All associated data will be lost.</p>
+          }
           <div class="confirm-actions">
             <button mat-button (click)="cancelDelete()">Cancel</button>
             <button mat-flat-button color="warn" (click)="confirmDelete()">
@@ -387,6 +461,112 @@ import {
       gap: 1.25rem;
     }
 
+    /* ── Category Styles ─────────────────────────────── */
+
+    .categories-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .category-section {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background var(--transition-fast);
+
+      &:hover {
+        background: rgba(129, 140, 248, 0.04);
+      }
+    }
+
+    .collapse-toggle {
+      flex-shrink: 0;
+    }
+
+    .category-name-area {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .category-name-input {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .category-summary {
+      display: flex;
+      gap: 1.25rem;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .cat-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.1rem;
+    }
+
+    .cat-stat-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .cat-stat-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .category-actions {
+      display: flex;
+      gap: 0.25rem;
+      flex-shrink: 0;
+      margin-left: 0.5rem;
+
+      .delete-btn {
+        opacity: 1;
+      }
+    }
+
+    .category-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 2rem 1.5rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+      .category-header {
+        flex-wrap: wrap;
+        gap: 0.5rem 0.25rem;
+      }
+      .category-summary {
+        width: 100%;
+        justify-content: space-around;
+        margin-left: 0;
+        padding-left: 2.5rem;
+      }
+      .category-actions {
+        margin-left: auto;
+      }
+    }
+
     .envelope-card {
       padding: 1.5rem;
       position: relative;
@@ -434,7 +614,8 @@ import {
       opacity: 0;
       transition: opacity var(--transition-fast), color var(--transition-fast);
 
-      .envelope-card:hover & {
+      .envelope-card:hover &,
+      .category-actions & {
         opacity: 1;
       }
 
@@ -783,12 +964,15 @@ export class Envelopes implements OnInit {
   protected readonly dashboardState = inject(DashboardStateService);
   private readonly dialog = inject(MatDialog);
   private readonly envelopeApi = inject(EnvelopeControllerService);
+  private readonly categoryApi = inject(EnvelopeCategoryControllerService);
   private readonly router = inject(Router);
 
   protected readonly deletingId = signal<string | null>(null);
+  protected readonly deletingType = signal<'envelope' | 'category'>('envelope');
   protected readonly savingId = signal<string | null>(null);
   protected readonly bannerDismissed = signal(false);
   protected readonly activePreviewId = signal<string | null>(null);
+  protected readonly collapsedCategories = signal(new Set<string>());
 
   protected readonly previewPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
@@ -883,10 +1067,26 @@ export class Envelopes implements OnInit {
     this.dashboardState.loadSpentSummaries();
   }
 
-  openCreateDialog(): void {
+  // ── Category helpers ──────────────────────────────────────────
+
+  openCreateCategoryDialog(): void {
+    const dialogRef = this.dialog.open(CreateCategoryDialog, {
+      width: '440px',
+      panelClass: 'dark-dialog',
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        this.dashboardState.addCategory(result);
+      }
+    });
+  }
+
+  openCreateEnvelopeDialog(categoryId: string): void {
     const dialogRef = this.dialog.open(CreateEnvelopeDialog, {
       width: '440px',
       panelClass: 'dark-dialog',
+      data: { categoryId } as CreateEnvelopeDialogData,
     });
 
     dialogRef.afterClosed().subscribe((result) => {
@@ -895,6 +1095,70 @@ export class Envelopes implements OnInit {
       }
     });
   }
+
+  toggleCategory(id: string): void {
+    this.collapsedCategories.update(set => {
+      const next = new Set(set);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  isCategoryCollapsed(id: string): boolean {
+    return this.collapsedCategories().has(id);
+  }
+
+  envelopesForCategory(categoryId: string): EnvelopeDTO[] {
+    return this.dashboardState.envelopesByCategory().get(categoryId) ?? [];
+  }
+
+  categoryAllocated(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0);
+  }
+
+  categorySpent(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + this.spentForEnvelope(e.id!), 0);
+  }
+
+  categoryRemaining(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + this.remainingForEnvelope(e.id!), 0);
+  }
+
+  onCategoryNameBlur(event: Event, category: EnvelopeCategoryDTO): void {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    if (!newName || newName === category.name) return;
+
+    const updated: EnvelopeCategoryDTO = { ...category, name: newName };
+    this.savingId.set(category.id!);
+    this.dashboardState.updateCategory(category.id!, updated);
+
+    this.categoryApi.updateEnvelopeCategory(category.id!, updated).subscribe({
+      next: (saved) => {
+        this.dashboardState.updateCategory(category.id!, saved);
+        this.savingId.set(null);
+      },
+      error: () => {
+        this.dashboardState.updateCategory(category.id!, category);
+        input.value = category.name;
+        this.savingId.set(null);
+      },
+    });
+  }
+
+  deleteCategory(id: string): void {
+    this.deletingId.set(id);
+    this.deletingType.set('category');
+  }
+
+  // ── Envelope helpers ──────────────────────────────────────────
 
   /** Auto-save name on blur */
   onNameBlur(event: Event, envelope: EnvelopeDTO): void {
@@ -927,6 +1191,7 @@ export class Envelopes implements OnInit {
 
   deleteEnvelope(id: string): void {
     this.deletingId.set(id);
+    this.deletingType.set('envelope');
   }
 
   cancelDelete(): void {
@@ -937,19 +1202,31 @@ export class Envelopes implements OnInit {
     const id = this.deletingId();
     if (!id) return;
 
-    // Optimistic delete
-    const envelope = this.dashboardState.envelopes().find(e => e.id === id);
-    this.dashboardState.removeEnvelope(id);
-    this.deletingId.set(null);
+    if (this.deletingType() === 'category') {
+      const category = this.dashboardState.envelopeCategories().find(c => c.id === id);
+      this.dashboardState.removeCategory(id);
+      this.deletingId.set(null);
 
-    this.envelopeApi.deleteEnvelope(id).subscribe({
-      error: () => {
-        // Revert on failure
-        if (envelope) {
-          this.dashboardState.addEnvelope(envelope);
-        }
-      },
-    });
+      this.categoryApi.deleteEnvelopeCategory(id).subscribe({
+        error: () => {
+          if (category) {
+            this.dashboardState.addCategory(category);
+          }
+        },
+      });
+    } else {
+      const envelope = this.dashboardState.envelopes().find(e => e.id === id);
+      this.dashboardState.removeEnvelope(id);
+      this.deletingId.set(null);
+
+      this.envelopeApi.deleteEnvelope(id).subscribe({
+        error: () => {
+          if (envelope) {
+            this.dashboardState.addEnvelope(envelope);
+          }
+        },
+      });
+    }
   }
 
   private saveEnvelope(original: EnvelopeDTO, updated: EnvelopeDTO, input: HTMLInputElement): void {

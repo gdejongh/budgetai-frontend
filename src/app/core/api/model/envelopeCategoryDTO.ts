@@ -9,12 +9,9 @@
  */
 
 
-export interface EnvelopeDTO { 
+export interface EnvelopeCategoryDTO { 
     id?: string;
     appUserId: string;
-    envelopeCategoryId: string;
     name: string;
-    allocatedBalance: number;
     createdAt?: string;
 }
-

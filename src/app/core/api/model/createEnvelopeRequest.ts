@@ -12,5 +12,6 @@
 export interface CreateEnvelopeRequest { 
     name: string;
     allocatedBalance: number;
+    envelopeCategoryId: string;
 }
 

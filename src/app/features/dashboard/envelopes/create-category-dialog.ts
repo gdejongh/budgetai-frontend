@@ -5,24 +5,19 @@ import {
   signal,
 } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
-import { CreateEnvelopeRequest } from '../../../core/api/model/createEnvelopeRequest';
-import { ConfettiService } from '../../../shared/services/confetti.service';
+import { EnvelopeCategoryControllerService } from '../../../core/api/api/envelopeCategoryController.service';
+import { CreateEnvelopeCategoryRequest } from '../../../core/api/model/createEnvelopeCategoryRequest';
 import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
-export interface CreateEnvelopeDialogData {
-  categoryId: string;
-}
-
 @Component({
-  selector: 'app-create-envelope-dialog',
+  selector: 'app-create-category-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ReactiveFormsModule,
@@ -37,8 +32,8 @@ export interface CreateEnvelopeDialogData {
   template: `
     <div class="dialog-container" @fadeIn>
       <h2 mat-dialog-title class="dialog-title">
-        <mat-icon class="title-icon">mail</mat-icon>
-        <span class="gradient-text">New Envelope</span>
+        <mat-icon class="title-icon">category</mat-icon>
+        <span class="gradient-text">New Category</span>
       </h2>
 
       <mat-dialog-content>
@@ -49,25 +44,13 @@ export interface CreateEnvelopeDialogData {
           </div>
         }
 
-        <form [formGroup]="form" (ngSubmit)="onSubmit()" id="create-envelope-form">
+        <form [formGroup]="form" (ngSubmit)="onSubmit()" id="create-category-form">
           <mat-form-field appearance="fill">
-            <mat-label>Envelope Name</mat-label>
-            <input matInput formControlName="name" placeholder="e.g. Groceries"
+            <mat-label>Category Name</mat-label>
+            <input matInput formControlName="name" placeholder="e.g. Bills"
                    autocomplete="off" />
             @if (form.controls.name.hasError('required') && form.controls.name.touched) {
-              <mat-error>Envelope name is required</mat-error>
-            }
-          </mat-form-field>
-
-          <mat-form-field appearance="fill">
-            <mat-label>Initial Allocation</mat-label>
-            <span matTextPrefix>$&nbsp;</span>
-            <input matInput type="number" formControlName="allocatedBalance"
-                   placeholder="0.00" step="0.01" min="0"
-                   (focus)="onAllocatedBalanceFocus()"
-                   (blur)="onAllocatedBalanceBlur()" />
-            @if (form.controls.allocatedBalance.hasError('min')) {
-              <mat-error>Allocation cannot be negative</mat-error>
+              <mat-error>Category name is required</mat-error>
             }
           </mat-form-field>
         </form>
@@ -76,7 +59,7 @@ export interface CreateEnvelopeDialogData {
       <mat-dialog-actions align="end">
         <button mat-button mat-dialog-close [disabled]="loading()">Cancel</button>
         <button mat-flat-button color="primary"
-                type="submit" form="create-envelope-form"
+                type="submit" form="create-category-form"
                 class="submit-btn"
                 [disabled]="loading() || form.invalid">
           @if (loading()) {
@@ -84,7 +67,7 @@ export interface CreateEnvelopeDialogData {
           } @else {
             <ng-container>
               <mat-icon>add</mat-icon>
-              Create Envelope
+              Create Category
             </ng-container>
           }
         </button>
@@ -171,11 +154,9 @@ export interface CreateEnvelopeDialogData {
     }
   `,
 })
-export class CreateEnvelopeDialog {
-  private readonly dialogRef = inject(MatDialogRef<CreateEnvelopeDialog>);
-  private readonly data: CreateEnvelopeDialogData = inject(MAT_DIALOG_DATA);
-  private readonly envelopeApi = inject(EnvelopeControllerService);
-  private readonly confetti = inject(ConfettiService);
+export class CreateCategoryDialog {
+  private readonly dialogRef = inject(MatDialogRef<CreateCategoryDialog>);
+  private readonly categoryApi = inject(EnvelopeCategoryControllerService);
   private readonly fb = inject(FormBuilder);
 
   protected readonly loading = signal(false);
@@ -183,7 +164,6 @@ export class CreateEnvelopeDialog {
 
   protected readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required],
-    allocatedBalance: [0, [Validators.min(0)]],
   });
 
   onSubmit(): void {
@@ -192,39 +172,21 @@ export class CreateEnvelopeDialog {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const dto: CreateEnvelopeRequest = {
+    const dto: CreateEnvelopeCategoryRequest = {
       name: this.form.value.name!,
-      allocatedBalance: this.form.value.allocatedBalance ?? 0,
-      envelopeCategoryId: this.data.categoryId,
     };
 
-    this.envelopeApi.createEnvelope(dto).subscribe({
+    this.categoryApi.createEnvelopeCategory(dto).subscribe({
       next: (created) => {
         this.loading.set(false);
-        this.confetti.celebrate();
         this.dialogRef.close(created);
       },
       error: (err) => {
         this.loading.set(false);
         this.errorMessage.set(
-          err.error?.message || 'Failed to create envelope. Please try again.'
+          err.error?.message || 'Failed to create category. Please try again.'
         );
       },
     });
-  }
-
-  onAllocatedBalanceFocus(): void {
-    const ctrl = this.form.controls.allocatedBalance;
-    if (ctrl.value === 0) {
-      ctrl.setValue(null as unknown as number); // Clear the field visually
-    }
-  }
-
-  onAllocatedBalanceBlur(): void {
-    const ctrl = this.form.controls.allocatedBalance;
-    // If left empty (null), reset to 0
-    if (ctrl.value === null) {
-      ctrl.setValue(0);
-    }
   }
 }

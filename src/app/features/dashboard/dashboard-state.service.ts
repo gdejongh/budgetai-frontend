@@ -3,9 +3,11 @@ import { catchError, forkJoin, of } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { BankAccountControllerService } from '../../core/api/api/bankAccountController.service';
+import { EnvelopeCategoryControllerService } from '../../core/api/api/envelopeCategoryController.service';
 import { EnvelopeControllerService } from '../../core/api/api/envelopeController.service';
 import { TransactionControllerService } from '../../core/api/api/transactionController.service';
 import { BankAccountDTO } from '../../core/api/model/bankAccountDTO';
+import { EnvelopeCategoryDTO } from '../../core/api/model/envelopeCategoryDTO';
 import { EnvelopeDTO } from '../../core/api/model/envelopeDTO';
 import { EnvelopeSpentSummaryDTO } from '../../core/api/model/envelopeSpentSummaryDTO';
 import { TransactionDTO } from '../../core/api/model/transactionDTO';
@@ -15,16 +17,30 @@ export type SpentTimePeriod = 'week' | 'month' | 'year';
 @Injectable({ providedIn: 'root' })
 export class DashboardStateService {
   private readonly bankAccountApi = inject(BankAccountControllerService);
+  private readonly envelopeCategoryApi = inject(EnvelopeCategoryControllerService);
   private readonly envelopeApi = inject(EnvelopeControllerService);
   private readonly transactionApi = inject(TransactionControllerService);
   private readonly authService = inject(AuthService);
 
   readonly accounts = signal<BankAccountDTO[]>([]);
+  readonly envelopeCategories = signal<EnvelopeCategoryDTO[]>([]);
   readonly envelopes = signal<EnvelopeDTO[]>([]);
   readonly transactions = signal<TransactionDTO[]>([]);
   readonly spentSummaries = signal<EnvelopeSpentSummaryDTO[]>([]);
   readonly spentTimePeriod = signal<SpentTimePeriod>('month');
   readonly loading = signal(true);
+
+  readonly envelopesByCategory = computed(() => {
+    const map = new Map<string, EnvelopeDTO[]>();
+    for (const envelope of this.envelopes()) {
+      const catId = envelope.envelopeCategoryId;
+      if (!map.has(catId)) {
+        map.set(catId, []);
+      }
+      map.get(catId)!.push(envelope);
+    }
+    return map;
+  });
 
   readonly spentDateRange = computed(() => {
     const now = new Date();
@@ -76,6 +92,9 @@ export class DashboardStateService {
       accounts: this.bankAccountApi.getBankAccounts().pipe(
         catchError(err => { console.error('Failed to load accounts:', err); return of([] as BankAccountDTO[]); })
       ),
+      envelopeCategories: this.envelopeCategoryApi.getEnvelopeCategories().pipe(
+        catchError(err => { console.error('Failed to load envelope categories:', err); return of([] as EnvelopeCategoryDTO[]); })
+      ),
       envelopes: this.envelopeApi.getEnvelopes().pipe(
         catchError(err => { console.error('Failed to load envelopes:', err); return of([] as EnvelopeDTO[]); })
       ),
@@ -83,8 +102,9 @@ export class DashboardStateService {
         catchError(err => { console.error('Failed to load transactions:', err); return of([] as TransactionDTO[]); })
       ),
     }).subscribe({
-      next: ({ accounts, envelopes, transactions }) => {
+      next: ({ accounts, envelopeCategories, envelopes, transactions }) => {
         this.accounts.set(accounts);
+        this.envelopeCategories.set(envelopeCategories);
         this.envelopes.set(envelopes);
         this.transactions.set(transactions);
         this.loading.set(false);
@@ -140,6 +160,21 @@ export class DashboardStateService {
   updateEnvelope(id: string, updated: EnvelopeDTO): void {
     this.envelopes.update(current =>
       current.map(e => (e.id === id ? updated : e))
+    );
+  }
+
+  addCategory(category: EnvelopeCategoryDTO): void {
+    this.envelopeCategories.update(current => [...current, category]);
+  }
+
+  removeCategory(id: string): void {
+    this.envelopeCategories.update(current => current.filter(c => c.id !== id));
+    this.envelopes.update(current => current.filter(e => e.envelopeCategoryId !== id));
+  }
+
+  updateCategory(id: string, updated: EnvelopeCategoryDTO): void {
+    this.envelopeCategories.update(current =>
+      current.map(c => (c.id === id ? updated : c))
     );
   }
 
