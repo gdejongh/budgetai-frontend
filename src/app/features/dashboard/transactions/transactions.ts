@@ -6,10 +6,12 @@ import {
   OnInit,
   signal,
   effect,
+  untracked,
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { DecimalPipe, DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -24,11 +26,13 @@ import {
 } from './edit-transaction-dialog';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
 import {
-  staggerFadeIn,
   slideInUp,
   scaleBounce,
   fadeIn,
 } from '../../../shared/animations/route-animations';
+
+type SortColumn = 'description' | 'account' | 'envelope' | 'date' | 'amount';
+type SortDirection = 'asc' | 'desc';
 
 @Component({
   selector: 'app-transactions',
@@ -36,12 +40,13 @@ import {
   imports: [
     DecimalPipe,
     DatePipe,
+    FormsModule,
     MatIconModule,
     MatButtonModule,
     MatDialogModule,
     SkeletonCard,
   ],
-  animations: [staggerFadeIn, slideInUp, scaleBounce, fadeIn],
+  animations: [slideInUp, scaleBounce, fadeIn],
   template: `
     <div class="page-header" @slideInUp>
       <div class="header-row">
@@ -51,8 +56,8 @@ import {
         </div>
         @if (!dashboardState.loading() && dashboardState.transactions().length > 0) {
           <div class="transaction-count glass-card glow-card">
-            <span class="count-label">{{ isFiltered() ? 'Showing' : 'Total' }}</span>
-            <span class="count-value glow-text">{{ isFiltered() ? filteredTransactions().length : dashboardState.transactionCount() }}</span>
+            <span class="count-label">{{ hasActiveFilters() ? 'Showing' : 'Total' }}</span>
+            <span class="count-value glow-text">{{ hasActiveFilters() ? sortedTransactions().length : dashboardState.transactionCount() }}</span>
           </div>
         }
       </div>
@@ -68,65 +73,183 @@ import {
       </div>
     }
 
+    @if (!dashboardState.loading() && dashboardState.transactions().length > 0) {
+      <div class="search-bar glass-card" @fadeIn>
+        <mat-icon class="search-icon">search</mat-icon>
+        <input type="text"
+               placeholder="Search by description, account, or envelope..."
+               [ngModel]="searchQuery()"
+               (ngModelChange)="searchQuery.set($event)"
+               aria-label="Search transactions" />
+        @if (searchQuery()) {
+          <button mat-icon-button class="search-clear" (click)="searchQuery.set('')" aria-label="Clear search">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+    }
+
     @if (dashboardState.loading()) {
-      <div class="transactions-list">
+      <div class="skeleton-list">
         <app-skeleton-card [count]="4" height="80px" />
       </div>
-    } @else if (filteredTransactions().length === 0) {
-      @if (filterLabel()) {
-        <div class="empty-state glass-card" @scaleBounce>
-          <mat-icon>filter_list_off</mat-icon>
-          <h2>No matching transactions</h2>
-          <p>There are no transactions matching this filter.</p>
-          <button mat-flat-button color="primary" (click)="clearFilter()">Clear Filter</button>
-        </div>
-      } @else {
-        <div class="empty-state glass-card" @scaleBounce>
-          <mat-icon>receipt_long</mat-icon>
-          <h2>No transactions yet</h2>
-          <p>Add your first transaction to start tracking your spending.</p>
-          <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
-            Add Your First Transaction
-          </button>
-        </div>
-      }
+    } @else if (sortedTransactions().length === 0 && (filterLabel() || searchQuery())) {
+      <div class="empty-state glass-card" @scaleBounce>
+        <mat-icon>filter_list_off</mat-icon>
+        <h2>No matching transactions</h2>
+        <p>There are no transactions matching your {{ searchQuery() ? 'search' : 'filter' }}.</p>
+        <button mat-flat-button color="primary" (click)="clearAllFilters()">Clear {{ searchQuery() ? 'Search' : 'Filter' }}</button>
+      </div>
+    } @else if (dashboardState.transactions().length === 0) {
+      <div class="empty-state glass-card" @scaleBounce>
+        <mat-icon>receipt_long</mat-icon>
+        <h2>No transactions yet</h2>
+        <p>Add your first transaction to start tracking your spending.</p>
+        <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
+          Add Your First Transaction
+        </button>
+      </div>
     } @else {
-      <div class="transactions-list" @staggerFadeIn>
-        @for (transaction of filteredTransactions(); track transaction.id) {
-          <div class="transaction-card glass-card neon-border"
-               [attr.data-txn-id]="transaction.id"
-               tabindex="0"
-               role="button"
-               [attr.aria-label]="'Edit transaction: ' + (transaction.description || 'Untitled') + ', ' + (transaction.amount >= 0 ? '+' : '-') + '$' + absAmount(transaction.amount)"
-               (click)="openEditDialog($event, transaction)"
-               (keydown.enter)="openEditDialog($event, transaction)">
-            <div class="transaction-icon-col">
-              <div class="txn-icon-indicator"
-                   [class.income]="transaction.amount > 0">
-                <mat-icon>{{ transaction.amount > 0 ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
-              </div>
+      <div class="table-container glass-card neon-border" @fadeIn>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="col-description sortable"
+                    [class.active]="sortColumn() === 'description'"
+                    [attr.aria-sort]="ariaSort('description')"
+                    (click)="toggleSort('description')"
+                    (keydown.enter)="toggleSort('description')"
+                    tabindex="0"
+                    role="columnheader">
+                  <span class="th-content">
+                    Description
+                    <mat-icon class="sort-icon">{{ sortIcon('description') }}</mat-icon>
+                  </span>
+                </th>
+                <th class="col-account sortable"
+                    [class.active]="sortColumn() === 'account'"
+                    [attr.aria-sort]="ariaSort('account')"
+                    (click)="toggleSort('account')"
+                    (keydown.enter)="toggleSort('account')"
+                    tabindex="0"
+                    role="columnheader">
+                  <span class="th-content">
+                    Account
+                    <mat-icon class="sort-icon">{{ sortIcon('account') }}</mat-icon>
+                  </span>
+                </th>
+                <th class="col-envelope sortable"
+                    [class.active]="sortColumn() === 'envelope'"
+                    [attr.aria-sort]="ariaSort('envelope')"
+                    (click)="toggleSort('envelope')"
+                    (keydown.enter)="toggleSort('envelope')"
+                    tabindex="0"
+                    role="columnheader">
+                  <span class="th-content">
+                    Envelope
+                    <mat-icon class="sort-icon">{{ sortIcon('envelope') }}</mat-icon>
+                  </span>
+                </th>
+                <th class="col-date sortable"
+                    [class.active]="sortColumn() === 'date'"
+                    [attr.aria-sort]="ariaSort('date')"
+                    (click)="toggleSort('date')"
+                    (keydown.enter)="toggleSort('date')"
+                    tabindex="0"
+                    role="columnheader">
+                  <span class="th-content">
+                    Date
+                    <mat-icon class="sort-icon">{{ sortIcon('date') }}</mat-icon>
+                  </span>
+                </th>
+                <th class="col-amount sortable"
+                    [class.active]="sortColumn() === 'amount'"
+                    [attr.aria-sort]="ariaSort('amount')"
+                    (click)="toggleSort('amount')"
+                    (keydown.enter)="toggleSort('amount')"
+                    tabindex="0"
+                    role="columnheader">
+                  <span class="th-content">
+                    Amount
+                    <mat-icon class="sort-icon">{{ sortIcon('amount') }}</mat-icon>
+                  </span>
+                </th>
+                <th class="col-actions" role="columnheader">
+                  <span class="visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (transaction of paginatedTransactions(); track transaction.id) {
+                <tr [attr.data-txn-id]="transaction.id"
+                    tabindex="0"
+                    role="button"
+                    [attr.aria-label]="'Edit transaction: ' + (transaction.description || 'Untitled') + ', ' + (transaction.amount >= 0 ? '+' : '-') + '$' + absAmount(transaction.amount)"
+                    (click)="openEditDialog($event, transaction)"
+                    (keydown.enter)="openEditDialog($event, transaction)">
+                  <td class="col-description">
+                    <span class="cell-description">{{ transaction.description || 'Untitled' }}</span>
+                  </td>
+                  <td class="col-account">
+                    <span class="cell-account">{{ accountNameMap()[transaction.bankAccountId] || 'Unknown' }}</span>
+                  </td>
+                  <td class="col-envelope">
+                    <span class="cell-envelope">{{ transaction.envelopeId ? (envelopeNameMap()[transaction.envelopeId] || 'Unknown') : 'No envelope' }}</span>
+                  </td>
+                  <td class="col-date">
+                    {{ formatDate(transaction.transactionDate) | date:'MMM d, yyyy' }}
+                  </td>
+                  <td class="col-amount">
+                    <span class="cell-amount"
+                          [class.income]="transaction.amount > 0"
+                          [class.expense]="transaction.amount < 0">
+                      {{ transaction.amount >= 0 ? '+$' : '-$' }}{{ absAmount(transaction.amount) | number:'1.2-2' }}
+                    </span>
+                  </td>
+                  <td class="col-actions">
+                    <button mat-icon-button
+                            class="delete-btn"
+                            (click)="deleteTransaction($event, transaction.id!)"
+                            [attr.aria-label]="'Delete transaction ' + (transaction.description || 'Untitled')">
+                      <mat-icon>delete_outline</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        @if (totalPages() > 1 || sortedTransactions().length > 25) {
+          <div class="pagination-bar">
+            <div class="page-size-select">
+              <label for="pageSize">Rows:</label>
+              <select id="pageSize"
+                      [ngModel]="pageSize()"
+                      (ngModelChange)="pageSize.set($event)"
+                      aria-label="Rows per page">
+                <option [value]="25">25</option>
+                <option [value]="50">50</option>
+                <option [value]="100">100</option>
+              </select>
             </div>
-            <div class="transaction-details">
-              <span class="txn-description">{{ transaction.description || 'Untitled' }}</span>
-              <div class="txn-meta">
-                <span class="txn-account-tag">{{ accountNameMap()[transaction.bankAccountId] || 'Unknown' }}</span>
-                <span class="txn-separator">&middot;</span>
-                <span class="txn-envelope-tag">{{ transaction.envelopeId ? (envelopeNameMap()[transaction.envelopeId] || 'Unknown') : 'No envelope' }}</span>
-                <span class="txn-separator">&middot;</span>
-                <span class="txn-date">{{ formatDate(transaction.transactionDate) | date:'MMM d, yyyy' }}</span>
-              </div>
-            </div>
-            <div class="transaction-amount-col">
-              <span class="txn-amount"
-                    [class.income]="transaction.amount > 0"
-                    [class.expense]="transaction.amount < 0">
-                {{ transaction.amount >= 0 ? '+$' : '-$' }}{{ absAmount(transaction.amount) | number:'1.2-2' }}
-              </span>
+            <span class="page-info">
+              {{ pageStart() }}–{{ pageEnd() }} of {{ sortedTransactions().length }}
+            </span>
+            <div class="page-nav">
               <button mat-icon-button
-                      class="delete-btn"
-                      (click)="deleteTransaction($event, transaction.id!)"
-                      [attr.aria-label]="'Delete transaction ' + (transaction.description || 'Untitled')">
-                <mat-icon>delete_outline</mat-icon>
+                      [disabled]="currentPage() === 0"
+                      (click)="currentPage.set(currentPage() - 1)"
+                      aria-label="Previous page">
+                <mat-icon>chevron_left</mat-icon>
+              </button>
+              <button mat-icon-button
+                      [disabled]="currentPage() >= totalPages() - 1"
+                      (click)="currentPage.set(currentPage() + 1)"
+                      aria-label="Next page">
+                <mat-icon>chevron_right</mat-icon>
               </button>
             </div>
           </div>
@@ -206,69 +329,191 @@ import {
       letter-spacing: -0.02em;
     }
 
-    .transactions-list {
+    /* ---- Search bar ---- */
+    .search-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem 0.5rem 1rem;
+      margin-bottom: 1.25rem;
+      max-width: 480px;
+
+      input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        font-family: inherit;
+
+        &::placeholder {
+          color: var(--text-muted);
+        }
+      }
+    }
+
+    .search-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .search-clear {
+      width: 28px;
+      height: 28px;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    /* ---- Filter bar ---- */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem 0.5rem 1rem;
+      margin-bottom: 1.25rem;
+      max-width: fit-content;
+    }
+
+    .filter-bar-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--accent-primary);
+    }
+
+    .filter-bar-label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .filter-bar-clear {
+      width: 28px;
+      height: 28px;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    /* ---- Skeleton list ---- */
+    .skeleton-list {
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
     }
 
-    .transaction-card {
-      display: flex;
-      align-items: center;
-      padding: 1rem 1.25rem;
-      gap: 1rem;
+    /* ---- Table ---- */
+    .table-container {
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    /* Column widths */
+    .col-description { width: 28%; }
+    .col-account { width: 18%; }
+    .col-envelope { width: 18%; }
+    .col-date { width: 14%; }
+    .col-amount { width: 14%; }
+    .col-actions { width: 8%; }
+
+    thead th {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-default);
+      user-select: none;
       position: relative;
-      cursor: pointer;
-      transition: transform var(--transition-fast), box-shadow var(--transition-base);
 
-      &:hover {
-        transform: translateY(-1px);
-      }
+      &.sortable {
+        cursor: pointer;
+        transition: color var(--transition-fast);
 
-      &:focus-visible {
-        outline: 2px solid var(--accent-primary);
-        outline-offset: 2px;
-      }
-    }
+        &:hover {
+          color: var(--text-primary);
+        }
 
-    .transaction-icon-col {
-      flex-shrink: 0;
-    }
+        &:focus-visible {
+          outline: 2px solid var(--accent-primary);
+          outline-offset: -2px;
+        }
 
-    .txn-icon-indicator {
-      width: 40px;
-      height: 40px;
-      border-radius: var(--radius-md);
-      background: rgba(248, 113, 113, 0.12);
-      border: 1px solid transparent;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      mat-icon {
-        color: var(--danger);
-        font-size: 20px;
-        width: 20px;
-        height: 20px;
-      }
-
-      &.income {
-        background: rgba(52, 211, 153, 0.12);
-
-        mat-icon {
-          color: var(--success);
+        &.active {
+          color: var(--accent-primary);
         }
       }
     }
 
-    .transaction-details {
-      flex: 1;
-      min-width: 0;
+    .th-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
     }
 
-    .txn-description {
+    .sort-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+      transition: color var(--transition-fast), transform var(--transition-fast);
+
+      .active & {
+        color: var(--accent-primary);
+      }
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &:hover {
+        background: var(--bg-card-hover);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: -2px;
+      }
+    }
+
+    tbody td {
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .cell-description {
       display: block;
-      font-size: 1rem;
       font-weight: 600;
       letter-spacing: -0.01em;
       overflow: hidden;
@@ -276,44 +521,25 @@ import {
       white-space: nowrap;
     }
 
-    .txn-meta {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-top: 0.25rem;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      flex-wrap: wrap;
-    }
-
-    .txn-account-tag {
+    .cell-account {
       color: var(--accent-primary);
       font-weight: 500;
+      font-size: 0.85rem;
     }
 
-    .txn-envelope-tag {
+    .cell-envelope {
       color: var(--accent-secondary, var(--text-secondary));
       font-weight: 500;
+      font-size: 0.85rem;
     }
 
-    .txn-date {
-      color: var(--text-muted);
+    .col-date {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      white-space: nowrap;
     }
 
-    .txn-separator {
-      color: var(--text-muted);
-      user-select: none;
-    }
-
-    .transaction-amount-col {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-shrink: 0;
-    }
-
-    .txn-amount {
-      font-size: 1.1rem;
+    .cell-amount {
       font-weight: 700;
       letter-spacing: -0.02em;
       white-space: nowrap;
@@ -327,12 +553,26 @@ import {
       }
     }
 
+    .col-amount {
+      text-align: right;
+    }
+
+    thead .col-amount {
+      .th-content {
+        justify-content: flex-end;
+      }
+    }
+
+    .col-actions {
+      text-align: center;
+    }
+
     .delete-btn {
       color: var(--text-muted);
       opacity: 0;
       transition: opacity var(--transition-fast), color var(--transition-fast);
 
-      .transaction-card:hover & {
+      tr:hover & {
         opacity: 1;
       }
 
@@ -341,6 +581,61 @@ import {
       }
     }
 
+    /* ---- Pagination ---- */
+    .pagination-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1.5rem;
+      padding: 0.625rem 1rem;
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .page-size-select {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      label {
+        color: var(--text-muted);
+        font-size: 0.8rem;
+      }
+
+      select {
+        background: var(--bg-input);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+        font-family: inherit;
+        cursor: pointer;
+
+        &:focus-visible {
+          outline: 2px solid var(--accent-primary);
+          outline-offset: 1px;
+        }
+      }
+    }
+
+    .page-info {
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .page-nav {
+      display: flex;
+      gap: 0.25rem;
+
+      button {
+        width: 32px;
+        height: 32px;
+      }
+    }
+
+    /* ---- Empty state ---- */
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -376,6 +671,7 @@ import {
       gap: 0.5rem;
     }
 
+    /* ---- FAB ---- */
     .fab-add {
       position: fixed;
       bottom: 2rem;
@@ -394,6 +690,7 @@ import {
       }
     }
 
+    /* ---- Delete confirm overlay ---- */
     .confirm-overlay {
       position: fixed;
       inset: 0;
@@ -437,85 +734,57 @@ import {
       justify-content: center;
     }
 
-    .filter-bar {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 0.75rem 0.5rem 1rem;
-      margin-bottom: 1.25rem;
-      max-width: fit-content;
-    }
-
-    .filter-bar-icon {
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
-      color: var(--accent-primary);
-    }
-
-    .filter-bar-label {
-      font-size: 0.85rem;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .filter-bar-clear {
-      width: 28px;
-      height: 28px;
-
-      mat-icon {
-        font-size: 16px;
-        width: 16px;
-        height: 16px;
-      }
-    }
-
+    /* ---- Highlight pulse for navigated-to row ---- */
     .highlight-pulse {
       animation: highlightPulse 2s ease-out !important;
     }
 
     @keyframes highlightPulse {
       0%, 15% {
-        box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.6), 0 0 20px rgba(34, 211, 238, 0.3);
+        box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.6);
+        background: rgba(34, 211, 238, 0.08);
       }
       100% {
         box-shadow: none;
+        background: transparent;
       }
     }
 
-    /* --- Mobile responsive --- */
+    /* ---- Visually hidden (a11y) ---- */
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ---- Mobile responsive ---- */
     @media (max-width: 600px) {
-      .transaction-card {
-        padding: 0.75rem 1rem;
-        gap: 0.75rem;
+      .table-scroll {
+        min-width: 0;
       }
 
-      .txn-description {
-        font-size: 0.9rem;
+      table {
+        min-width: 640px;
       }
 
-      .txn-meta {
-        font-size: 0.75rem;
-        gap: 0.3rem;
-      }
-
-      .txn-amount {
-        font-size: 0.95rem;
-      }
-
-      .txn-icon-indicator {
-        width: 36px;
-        height: 36px;
-
-        mat-icon {
-          font-size: 18px;
-          width: 18px;
-          height: 18px;
-        }
+      .search-bar {
+        max-width: 100%;
       }
 
       .delete-btn {
         opacity: 1;
+      }
+
+      .pagination-bar {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: center;
       }
     }
 
@@ -534,8 +803,15 @@ export class Transactions implements OnInit {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  // ---- UI state ----
   protected readonly deletingId = signal<string | null>(null);
+  protected readonly searchQuery = signal('');
+  protected readonly sortColumn = signal<SortColumn>('date');
+  protected readonly sortDirection = signal<SortDirection>('desc');
+  protected readonly pageSize = signal(25);
+  protected readonly currentPage = signal(0);
 
+  // ---- Query params ----
   private readonly queryParams = toSignal(this.route.queryParamMap);
 
   protected readonly filterBankAccountId = computed(() =>
@@ -550,33 +826,7 @@ export class Transactions implements OnInit {
     this.queryParams()?.get('highlightId') ?? null
   );
 
-  protected readonly filteredTransactions = computed(() => {
-    const txns = this.dashboardState.transactions();
-    const bankAccountId = this.filterBankAccountId();
-    const envelopeId = this.filterEnvelopeId();
-    if (bankAccountId) return txns.filter(t => t.bankAccountId === bankAccountId);
-    if (envelopeId) return txns.filter(t => t.envelopeId === envelopeId);
-    return txns;
-  });
-
-  protected readonly isFiltered = computed(() =>
-    !!this.filterBankAccountId() || !!this.filterEnvelopeId()
-  );
-
-  protected readonly filterLabel = computed(() => {
-    const bankAccountId = this.filterBankAccountId();
-    const envelopeId = this.filterEnvelopeId();
-    if (bankAccountId) {
-      const name = this.accountNameMap()[bankAccountId];
-      return name ? `Account: ${name}` : 'Filtered by account';
-    }
-    if (envelopeId) {
-      const name = this.envelopeNameMap()[envelopeId];
-      return name ? `Envelope: ${name}` : 'Filtered by envelope';
-    }
-    return null;
-  });
-
+  // ---- Name maps ----
   protected readonly accountNameMap = computed(() => {
     const map: Record<string, string> = {};
     for (const a of this.dashboardState.accounts()) {
@@ -593,7 +843,121 @@ export class Transactions implements OnInit {
     return map;
   });
 
+  // ---- Data pipeline ----
+  protected readonly filteredTransactions = computed(() => {
+    const txns = this.dashboardState.transactions();
+    const bankAccountId = this.filterBankAccountId();
+    const envelopeId = this.filterEnvelopeId();
+    if (bankAccountId) return txns.filter(t => t.bankAccountId === bankAccountId);
+    if (envelopeId) return txns.filter(t => t.envelopeId === envelopeId);
+    return txns;
+  });
+
+  protected readonly searchedTransactions = computed(() => {
+    const txns = this.filteredTransactions();
+    const query = this.searchQuery().trim().toLowerCase();
+    if (!query) return txns;
+
+    const accMap = this.accountNameMap();
+    const envMap = this.envelopeNameMap();
+
+    return txns.filter(t => {
+      const desc = (t.description ?? '').toLowerCase();
+      const accName = (accMap[t.bankAccountId] ?? '').toLowerCase();
+      const envName = (t.envelopeId ? (envMap[t.envelopeId] ?? '') : '').toLowerCase();
+      return desc.includes(query) || accName.includes(query) || envName.includes(query);
+    });
+  });
+
+  protected readonly sortedTransactions = computed(() => {
+    const txns = [...this.searchedTransactions()];
+    const col = this.sortColumn();
+    const dir = this.sortDirection();
+    const accMap = this.accountNameMap();
+    const envMap = this.envelopeNameMap();
+    const mult = dir === 'asc' ? 1 : -1;
+
+    return txns.sort((a, b) => {
+      let cmp = 0;
+      switch (col) {
+        case 'description':
+          cmp = (a.description ?? '').localeCompare(b.description ?? '');
+          break;
+        case 'account':
+          cmp = (accMap[a.bankAccountId] ?? '').localeCompare(accMap[b.bankAccountId] ?? '');
+          break;
+        case 'envelope': {
+          const envA = a.envelopeId ? (envMap[a.envelopeId] ?? '') : '';
+          const envB = b.envelopeId ? (envMap[b.envelopeId] ?? '') : '';
+          cmp = envA.localeCompare(envB);
+          break;
+        }
+        case 'date':
+          cmp = a.transactionDate.localeCompare(b.transactionDate);
+          break;
+        case 'amount':
+          cmp = a.amount - b.amount;
+          break;
+      }
+      return cmp * mult;
+    });
+  });
+
+  protected readonly totalPages = computed(() =>
+    Math.ceil(this.sortedTransactions().length / this.pageSize()) || 1
+  );
+
+  protected readonly paginatedTransactions = computed(() => {
+    const start = this.currentPage() * this.pageSize();
+    return this.sortedTransactions().slice(start, start + this.pageSize());
+  });
+
+  protected readonly pageStart = computed(() =>
+    this.sortedTransactions().length === 0 ? 0 : this.currentPage() * this.pageSize() + 1
+  );
+
+  protected readonly pageEnd = computed(() =>
+    Math.min((this.currentPage() + 1) * this.pageSize(), this.sortedTransactions().length)
+  );
+
+  // ---- Filter helpers ----
+  protected readonly isFiltered = computed(() =>
+    !!this.filterBankAccountId() || !!this.filterEnvelopeId()
+  );
+
+  protected readonly hasActiveFilters = computed(() =>
+    this.isFiltered() || !!this.searchQuery().trim()
+  );
+
+  protected readonly filterLabel = computed(() => {
+    const bankAccountId = this.filterBankAccountId();
+    const envelopeId = this.filterEnvelopeId();
+    if (bankAccountId) {
+      const name = this.accountNameMap()[bankAccountId];
+      return name ? `Account: ${name}` : 'Filtered by account';
+    }
+    if (envelopeId) {
+      const name = this.envelopeNameMap()[envelopeId];
+      return name ? `Envelope: ${name}` : 'Filtered by envelope';
+    }
+    return null;
+  });
+
   constructor() {
+    // Reset page when filters/sort/search change
+    effect(() => {
+      // Read all the signals that should trigger a page reset
+      this.searchQuery();
+      this.filterBankAccountId();
+      this.filterEnvelopeId();
+      this.sortColumn();
+      this.sortDirection();
+      this.pageSize();
+      // Reset page in untracked context to avoid circular dependency
+      untracked(() => this.currentPage.set(0));
+    });
+
+    // Highlight a specific transaction after navigation
     effect(() => {
       const id = this.highlightId();
       if (!id) return;
@@ -618,6 +982,29 @@ export class Transactions implements OnInit {
       this.dashboardState.loadTransactions();
     }
   }
+
+  // ---- Sort ----
+
+  toggleSort(column: SortColumn): void {
+    if (this.sortColumn() === column) {
+      this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortColumn.set(column);
+      this.sortDirection.set('asc');
+    }
+  }
+
+  sortIcon(column: SortColumn): string {
+    if (this.sortColumn() !== column) return 'unfold_more';
+    return this.sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward';
+  }
+
+  ariaSort(column: SortColumn): string {
+    if (this.sortColumn() !== column) return 'none';
+    return this.sortDirection() === 'asc' ? 'ascending' : 'descending';
+  }
+
+  // ---- Helpers ----
 
   /** Returns the absolute value of an amount for display */
   absAmount(amount: number): number {
@@ -689,7 +1076,16 @@ export class Transactions implements OnInit {
     });
   }
 
+  // ---- Filter / Clear ----
+
   clearFilter(): void {
     this.router.navigate(['/dashboard/transactions']);
+  }
+
+  clearAllFilters(): void {
+    this.searchQuery.set('');
+    if (this.isFiltered()) {
+      this.router.navigate(['/dashboard/transactions']);
+    }
   }
 }
