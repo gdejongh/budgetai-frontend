@@ -4,6 +4,7 @@ export * from './bankAccountDTO';
 export * from './createBankAccountRequest';
 export * from './createEnvelopeRequest';
 export * from './envelopeDTO';
+export * from './envelopeSpentSummaryDTO';
 export * from './loginRequestDTO';
 export * from './refreshRequestDTO';
 export * from './transactionDTO';

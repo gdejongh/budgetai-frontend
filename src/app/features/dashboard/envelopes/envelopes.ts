@@ -10,9 +10,10 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
-import { DatePipe } from '@angular/common';
+import { CurrencyPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -20,7 +21,7 @@ import { MatInputModule } from '@angular/material/input';
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
 import { EnvelopeDTO } from '../../../core/api/model/envelopeDTO';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
-import { DashboardStateService } from '../dashboard-state.service';
+import { DashboardStateService, SpentTimePeriod } from '../dashboard-state.service';
 import { CreateEnvelopeDialog } from './create-envelope-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
@@ -38,8 +39,10 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     DatePipe,
+    CurrencyPipe,
     MatIconModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
@@ -97,11 +100,23 @@ import {
           </button>
         </div>
       } @else {
+        <div class="time-period-toggle" role="group" aria-label="Spending time period">
+          <mat-button-toggle-group
+            [value]="dashboardState.spentTimePeriod()"
+            (change)="onTimePeriodChange($event.value)"
+            aria-label="Select spending time period"
+            hideSingleSelectionIndicator>
+            <mat-button-toggle value="week">Week</mat-button-toggle>
+            <mat-button-toggle value="month">Month</mat-button-toggle>
+            <mat-button-toggle value="year">Year</mat-button-toggle>
+          </mat-button-toggle-group>
+        </div>
+
         <div class="envelopes-grid" @staggerFadeIn>
           @for (envelope of dashboardState.envelopes(); track envelope.id) {
             <div
               class="envelope-card glass-card neon-border"
-              [class.envelope-negative]="envelope.allocatedBalance < 0"
+              [class.envelope-negative]="remainingForEnvelope(envelope.id!) < 0"
             >
               <div class="card-header">
                 <div class="card-icon">
@@ -126,18 +141,59 @@ import {
                        aria-label="Envelope name" />
               </div>
 
-              <div class="editable-field balance-field">
-                <label class="sr-only" [attr.for]="'balance-' + envelope.id">Allocated balance</label>
-                <span class="currency-prefix">$</span>
-                <input [id]="'balance-' + envelope.id"
-                       class="inline-input balance-input"
-                       type="number"
-                       step="0.01"
-                       min="0"
-                       [value]="envelope.allocatedBalance"
-                       (blur)="onBalanceBlur($event, envelope)"
-                       (keydown.enter)="blurTarget($event)"
-                       aria-label="Allocated balance" />
+              <div class="envelope-finances">
+                  <!-- Remaining: now at top, larger, with progress bar and warning icon -->
+                  <div class="finance-row remaining-row" style="margin-bottom: 0.5rem;">
+                    <span class="finance-label" style="font-size:1rem;font-weight:700;">Remaining</span>
+                    <span class="finance-value remaining-value"
+                          [class.remaining-positive]="remainingForEnvelope(envelope.id!) >= 0"
+                          [class.remaining-negative]="remainingForEnvelope(envelope.id!) < 0"
+                          style="font-size:1.35rem;font-weight:900;display:flex;align-items:center;gap:0.4rem;"
+                          aria-live="polite"
+                          [attr.aria-label]="'Remaining: ' + (remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2')">
+                      {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
+                      @if (remainingForEnvelope(envelope.id!) < 0) {
+                        <mat-icon class="remaining-warning" aria-label="Overspent">warning_amber</mat-icon>
+                      }
+                    </span>
+                  </div>
+                  <!-- Progress bar for remaining/allocated -->
+                  <div class="remaining-progress-bar" role="progressbar"
+                       [attr.aria-valuenow]="percentRemaining(envelope)"
+                       aria-valuemin="0" aria-valuemax="100"
+                       [attr.aria-label]="'Remaining funds: ' + percentRemaining(envelope) + '%'">
+                    <div class="progress-track">
+                      <div class="progress-fill"
+                           [style.width]="percentRemaining(envelope) + '%'"
+                           [class.negative]="remainingForEnvelope(envelope.id!) < 0"
+                           [class.low]="remainingForEnvelope(envelope.id!) <= envelope.allocatedBalance * 0.1"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="finance-row allocated-row">
+                      <span class="finance-label">Allocated</span>
+                      <div class="editable-field balance-field">
+                        <label class="sr-only" [attr.for]="'balance-' + envelope.id">Allocated balance</label>
+                        <span class="currency-prefix">$</span>
+                        <div class="allocated-input-wrapper">
+                          <input [id]="'balance-' + envelope.id"
+                                 class="inline-input balance-input editable-highlight"
+                                 type="number"
+                                 step="0.01"
+                                 min="0"
+                                 [value]="envelope.allocatedBalance"
+                                 (blur)="onBalanceBlur($event, envelope)"
+                                 (keydown.enter)="blurTarget($event)"
+                                 aria-label="Allocated balance"
+                                 title="Edit allocated amount" />
+                          <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
+                        </div>
+                      </div>
+                  </div>
+                  <div class="finance-row spent-row">
+                    <span class="finance-label">Spent</span>
+                    <span class="finance-value spent-value">{{ spentForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                  </div>
               </div>
 
               @if (envelope.createdAt) {
@@ -212,6 +268,32 @@ import {
     }
   `,
   styles: `
+        .allocated-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+        .editable-highlight {
+          background: rgba(129,140,248,0.08);
+          border: 1px solid var(--accent-secondary, #818cf8);
+          transition: background 0.2s, border-color 0.2s;
+        }
+        .editable-highlight:focus {
+          background: rgba(129,140,248,0.16);
+          border-color: var(--accent-secondary, #818cf8);
+        }
+        .edit-icon {
+          font-size: 1rem;
+          margin-left: 0.3rem;
+          color: var(--accent-secondary, #818cf8);
+          opacity: 0.7;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+        .allocated-input-wrapper:hover .edit-icon,
+        .allocated-input-wrapper:focus-within .edit-icon {
+          opacity: 1;
+        }
     .page-header {
       margin-bottom: 2rem;
 
@@ -313,6 +395,10 @@ import {
       &:hover {
         transform: translateY(-2px);
       }
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 320px;
     }
 
     .envelope-negative {
@@ -403,22 +489,27 @@ import {
     }
 
     .balance-field {
-      margin-bottom: 0.5rem;
+      margin-bottom: 0;
+      margin-left: auto;
     }
 
     .currency-prefix {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--accent-secondary, #818cf8);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
       margin-right: 0.1rem;
       flex-shrink: 0;
     }
 
     .balance-input {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--accent-secondary, #818cf8);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
       letter-spacing: -0.02em;
+      width: auto;
+      max-width: 5rem;
+      text-align: right;
+      padding: 0.15rem 0.35rem;
 
       /* Hide number spinner */
       -moz-appearance: textfield;
@@ -433,6 +524,98 @@ import {
       font-size: 0.8rem;
       color: var(--text-muted);
     }
+
+    .time-period-toggle {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1.25rem;
+    }
+
+    .envelope-finances {
+      display: grid;
+      grid-template-rows: repeat(3, auto);
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      margin-top: 0.5rem;
+      padding: 0.5rem 0 0.25rem 0;
+    }
+
+    .finance-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      padding: 0.15rem 0;
+    }
+
+    .finance-label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-right: 0.5rem;
+    }
+
+    .finance-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      text-align: right;
+      min-width: 80px;
+      letter-spacing: -0.01em;
+    }
+
+    .spent-value {
+      color: var(--text-secondary);
+      opacity: 0.85;
+    }
+
+    .remaining-positive {
+        color: var(--success, #22c55e);
+        text-shadow: 0 0 8px rgba(34, 197, 94, 0.22);
+        font-weight: 900;
+    }
+
+    .remaining-negative {
+        color: var(--danger, #ef4444);
+        text-shadow: 0 0 10px rgba(239, 68, 68, 0.22);
+        font-weight: 900;
+      }
+
+      .remaining-warning {
+        color: var(--danger, #ef4444);
+        font-size: 1.2rem;
+        vertical-align: middle;
+        margin-left: 0.2rem;
+      }
+
+      .remaining-progress-bar {
+        width: 100%;
+        height: 8px;
+        margin: 0.2rem 0 0.7rem 0;
+        background: transparent;
+        border-radius: 6px;
+        position: relative;
+        box-sizing: border-box;
+      }
+      .progress-track {
+        width: 100%;
+        height: 100%;
+        background: var(--border-subtle, #e5e7eb);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--success, #22c55e);
+        border-radius: 6px;
+        transition: width 0.3s cubic-bezier(.4,0,.2,1);
+      }
+      .progress-fill.low {
+        background: var(--warning, #fbbf24);
+      }
+      .progress-fill.negative {
+        background: var(--danger, #ef4444);
+      }
 
     .view-txn-link {
       display: flex;
@@ -613,6 +796,13 @@ export class Envelopes implements OnInit {
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
   ];
 
+    /** Returns percent remaining for progress bar (0-100, clamps negative/overflow) */
+    percentRemaining(envelope: EnvelopeDTO): number {
+      const allocated = envelope.allocatedBalance || 1;
+      const remaining = this.remainingForEnvelope(envelope.id!);
+      return Math.max(0, Math.min(100, Math.round((remaining / allocated) * 100)));
+    }
+
   protected readonly previewTransactions = computed(() => {
     const id = this.activePreviewId();
     if (!id) return [];
@@ -644,6 +834,40 @@ export class Envelopes implements OnInit {
     return map;
   });
 
+  /** Maps envelopeId → spent amount for the selected time period (positive value) */
+  protected readonly spentMap = computed(() => {
+    const map: Record<string, number> = {};
+    for (const s of this.dashboardState.spentSummaries()) {
+      map[s.envelopeId] = Math.abs(s.periodSpent);
+    }
+    return map;
+  });
+
+  /** Maps envelopeId → remaining (allocated + all-time spent, where spent is negative) */
+  protected readonly remainingMap = computed(() => {
+    const envelopes = this.dashboardState.envelopes();
+    const summaries = this.dashboardState.spentSummaries();
+    const totalSpentMap: Record<string, number> = {};
+    for (const s of summaries) {
+      totalSpentMap[s.envelopeId] = s.totalSpent;
+    }
+    const map: Record<string, number> = {};
+    for (const e of envelopes) {
+      if (e.id) {
+        map[e.id] = (e.allocatedBalance ?? 0) + (totalSpentMap[e.id] ?? 0);
+      }
+    }
+    return map;
+  });
+
+  spentForEnvelope(envelopeId: string): number {
+    return this.spentMap()[envelopeId] ?? 0;
+  }
+
+  remainingForEnvelope(envelopeId: string): number {
+    return this.remainingMap()[envelopeId] ?? 0;
+  }
+
   txnCountForEnvelope(envelopeId: string): number {
     return this.txnCountMap()[envelopeId] ?? 0;
   }
@@ -652,6 +876,11 @@ export class Envelopes implements OnInit {
     if (this.dashboardState.envelopes().length === 0 && !this.dashboardState.loading()) {
       this.dashboardState.refresh();
     }
+  }
+
+  onTimePeriodChange(value: SpentTimePeriod): void {
+    this.dashboardState.spentTimePeriod.set(value);
+    this.dashboardState.loadSpentSummaries();
   }
 
   openCreateDialog(): void {
