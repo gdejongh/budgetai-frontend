@@ -1,4 +1,4 @@
-import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { catchError, forkJoin, of } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
@@ -7,12 +7,11 @@ import { EnvelopeCategoryControllerService } from '../../core/api/api/envelopeCa
 import { EnvelopeControllerService } from '../../core/api/api/envelopeController.service';
 import { TransactionControllerService } from '../../core/api/api/transactionController.service';
 import { BankAccountDTO } from '../../core/api/model/bankAccountDTO';
+import { EnvelopeAllocationDTO } from '../../core/api/model/envelopeAllocationDTO';
 import { EnvelopeCategoryDTO } from '../../core/api/model/envelopeCategoryDTO';
 import { EnvelopeDTO } from '../../core/api/model/envelopeDTO';
 import { EnvelopeSpentSummaryDTO } from '../../core/api/model/envelopeSpentSummaryDTO';
 import { TransactionDTO } from '../../core/api/model/transactionDTO';
-
-export type SpentTimePeriod = 'week' | 'month' | 'year';
 
 @Injectable({ providedIn: 'root' })
 export class DashboardStateService {
@@ -27,7 +26,10 @@ export class DashboardStateService {
   readonly envelopes = signal<EnvelopeDTO[]>([]);
   readonly transactions = signal<TransactionDTO[]>([]);
   readonly spentSummaries = signal<EnvelopeSpentSummaryDTO[]>([]);
-  readonly spentTimePeriod = signal<SpentTimePeriod>('month');
+  readonly monthlyAllocations = signal<EnvelopeAllocationDTO[]>([]);
+
+  /** The currently viewed month, as 'YYYY-MM-DD' (first of month). */
+  readonly viewedMonth = signal(this.getCurrentMonthStr());
   readonly loading = signal(true);
 
   readonly envelopesByCategory = computed(() => {
@@ -43,24 +45,13 @@ export class DashboardStateService {
   });
 
   readonly spentDateRange = computed(() => {
-    const now = new Date();
-    const endDate = this.formatDate(now);
-    let start: Date;
-    switch (this.spentTimePeriod()) {
-      case 'week':
-        start = new Date(now);
-        start.setDate(start.getDate() - 7);
-        break;
-      case 'month':
-        start = new Date(now);
-        start.setMonth(start.getMonth() - 1);
-        break;
-      case 'year':
-        start = new Date(now);
-        start.setFullYear(start.getFullYear() - 1);
-        break;
-    }
-    return { startDate: this.formatDate(start), endDate };
+    const monthStr = this.viewedMonth();
+    const [year, month] = monthStr.split('-').map(Number);
+    const startDate = monthStr;
+    // Last day of the month
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { startDate, endDate };
   });
 
   readonly totalBankBalance = computed(() =>
@@ -101,12 +92,16 @@ export class DashboardStateService {
       transactions: this.transactionApi.getAllTransactions().pipe(
         catchError(err => { console.error('Failed to load transactions:', err); return of([] as TransactionDTO[]); })
       ),
+      monthlyAllocations: this.envelopeApi.getMonthlyAllocations(this.viewedMonth()).pipe(
+        catchError(err => { console.error('Failed to load monthly allocations:', err); return of([] as EnvelopeAllocationDTO[]); })
+      ),
     }).subscribe({
-      next: ({ accounts, envelopeCategories, envelopes, transactions }) => {
+      next: ({ accounts, envelopeCategories, envelopes, transactions, monthlyAllocations }) => {
         this.accounts.set(accounts);
         this.envelopeCategories.set(envelopeCategories);
         this.envelopes.set(envelopes);
         this.transactions.set(transactions);
+        this.monthlyAllocations.set(monthlyAllocations);
         this.loading.set(false);
         this.loadSpentSummaries();
       },
@@ -126,6 +121,30 @@ export class DashboardStateService {
 
   refresh(): void {
     this.loadAll();
+  }
+
+  /**
+   * Navigate to a specific month and reload monthly allocations + spent summaries.
+   */
+  loadMonthData(month: string): void {
+    this.viewedMonth.set(month);
+    forkJoin({
+      monthlyAllocations: this.envelopeApi.getMonthlyAllocations(month).pipe(
+        catchError(err => { console.error('Failed to load monthly allocations:', err); return of([] as EnvelopeAllocationDTO[]); })
+      ),
+    }).subscribe(({ monthlyAllocations }) => {
+      this.monthlyAllocations.set(monthlyAllocations);
+      this.loadSpentSummaries();
+    });
+  }
+
+  /**
+   * Reload only the envelopes list (to pick up updated allocatedBalance totals).
+   */
+  loadEnvelopes(): void {
+    this.envelopeApi.getEnvelopes().pipe(
+      catchError(err => { console.error('Failed to load envelopes:', err); return of([] as EnvelopeDTO[]); })
+    ).subscribe(envelopes => this.envelopes.set(envelopes));
   }
 
   loadTransactions(): void {
@@ -232,10 +251,30 @@ export class DashboardStateService {
     return `${year}-${month}-${day}`;
   }
 
+  private getCurrentMonthStr(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}-01`;
+  }
+
   /**
    * Remove all transactions for a given bank account ID.
    */
   removeTransactionsForAccount(accountId: string): void {
     this.transactions.update(current => current.filter(t => t.bankAccountId !== accountId));
+  }
+
+  /**
+   * Update the monthly allocation for an envelope in the local signal.
+   */
+  updateMonthlyAllocation(envelopeId: string, amount: number): void {
+    this.monthlyAllocations.update(current => {
+      const existing = current.find(a => a.envelopeId === envelopeId);
+      if (existing) {
+        return current.map(a => a.envelopeId === envelopeId ? { ...a, amount } : a);
+      }
+      return [...current, { envelopeId, yearMonth: this.viewedMonth(), amount }];
+    });
   }
 }

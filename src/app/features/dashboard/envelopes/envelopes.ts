@@ -13,7 +13,6 @@ import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angul
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -23,7 +22,7 @@ import { EnvelopeCategoryControllerService } from '../../../core/api/api/envelop
 import { EnvelopeDTO } from '../../../core/api/model/envelopeDTO';
 import { EnvelopeCategoryDTO } from '../../../core/api/model/envelopeCategoryDTO';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
-import { DashboardStateService, SpentTimePeriod } from '../dashboard-state.service';
+import { DashboardStateService } from '../dashboard-state.service';
 import { CreateEnvelopeDialog, CreateEnvelopeDialogData } from './create-envelope-dialog';
 import { CreateCategoryDialog } from './create-category-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
@@ -45,7 +44,6 @@ import {
     CurrencyPipe,
     MatIconModule,
     MatButtonModule,
-    MatButtonToggleModule,
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
@@ -103,16 +101,14 @@ import {
           </button>
         </div>
       } @else {
-        <div class="time-period-toggle" role="group" aria-label="Spending time period">
-          <mat-button-toggle-group
-            [value]="dashboardState.spentTimePeriod()"
-            (change)="onTimePeriodChange($event.value)"
-            aria-label="Select spending time period"
-            hideSingleSelectionIndicator>
-            <mat-button-toggle value="week">Week</mat-button-toggle>
-            <mat-button-toggle value="month">Month</mat-button-toggle>
-            <mat-button-toggle value="year">Year</mat-button-toggle>
-          </mat-button-toggle-group>
+        <div class="month-navigator" role="navigation" aria-label="Month navigation">
+          <button mat-icon-button (click)="navigateMonth(-1)" aria-label="Previous month">
+            <mat-icon>chevron_left</mat-icon>
+          </button>
+          <span class="month-label">{{ viewedMonthLabel() }}</span>
+          <button mat-icon-button (click)="navigateMonth(1)" aria-label="Next month">
+            <mat-icon>chevron_right</mat-icon>
+          </button>
         </div>
 
         <div class="categories-list" @staggerFadeIn>
@@ -139,7 +135,7 @@ import {
                 <div class="category-summary">
                   <span class="cat-stat">
                     <span class="cat-stat-label">Allocated</span>
-                    <span class="cat-stat-value">{{ categoryAllocated(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                    <span class="cat-stat-value">{{ categoryMonthlyAllocated(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
                   </span>
                   <span class="cat-stat">
                     <span class="cat-stat-label">Spent</span>
@@ -245,7 +241,7 @@ import {
                                            type="number"
                                            step="0.01"
                                            min="0"
-                                           [value]="envelope.allocatedBalance"
+                                           [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
                                            aria-label="Allocated balance"
@@ -706,10 +702,20 @@ import {
       color: var(--text-muted);
     }
 
-    .time-period-toggle {
+    .month-navigator {
       display: flex;
+      align-items: center;
       justify-content: flex-end;
+      gap: 0.5rem;
       margin-bottom: 1.25rem;
+    }
+
+    .month-label {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      min-width: 160px;
+      text-align: center;
     }
 
     .envelope-finances {
@@ -982,7 +988,7 @@ export class Envelopes implements OnInit {
 
     /** Returns percent remaining for progress bar (0-100, clamps negative/overflow) */
     percentRemaining(envelope: EnvelopeDTO): number {
-      const allocated = envelope.allocatedBalance || 1;
+      const allocated = this.monthlyAllocationForEnvelope(envelope.id!) || 1;
       const remaining = this.remainingForEnvelope(envelope.id!);
       return Math.max(0, Math.min(100, Math.round((remaining / allocated) * 100)));
     }
@@ -1018,7 +1024,7 @@ export class Envelopes implements OnInit {
     return map;
   });
 
-  /** Maps envelopeId → spent amount for the selected time period (positive value) */
+  /** Maps envelopeId → spent amount for the viewed month (positive value) */
   protected readonly spentMap = computed(() => {
     const map: Record<string, number> = {};
     for (const s of this.dashboardState.spentSummaries()) {
@@ -1027,18 +1033,23 @@ export class Envelopes implements OnInit {
     return map;
   });
 
-  /** Maps envelopeId → remaining (allocated + all-time spent, where spent is negative) */
-  protected readonly remainingMap = computed(() => {
-    const envelopes = this.dashboardState.envelopes();
-    const summaries = this.dashboardState.spentSummaries();
-    const totalSpentMap: Record<string, number> = {};
-    for (const s of summaries) {
-      totalSpentMap[s.envelopeId] = s.totalSpent;
-    }
+  /** Maps envelopeId → monthly allocation amount for the viewed month */
+  protected readonly monthlyAllocationMap = computed(() => {
     const map: Record<string, number> = {};
-    for (const e of envelopes) {
+    for (const a of this.dashboardState.monthlyAllocations()) {
+      map[a.envelopeId] = a.amount;
+    }
+    return map;
+  });
+
+  /** Maps envelopeId → remaining for the viewed month (monthly allocation − monthly spent) */
+  protected readonly remainingMap = computed(() => {
+    const allocations = this.monthlyAllocationMap();
+    const spent = this.spentMap();
+    const map: Record<string, number> = {};
+    for (const e of this.dashboardState.envelopes()) {
       if (e.id) {
-        map[e.id] = (e.allocatedBalance ?? 0) + (totalSpentMap[e.id] ?? 0);
+        map[e.id] = (allocations[e.id] ?? 0) - (spent[e.id] ?? 0);
       }
     }
     return map;
@@ -1046,6 +1057,10 @@ export class Envelopes implements OnInit {
 
   spentForEnvelope(envelopeId: string): number {
     return this.spentMap()[envelopeId] ?? 0;
+  }
+
+  monthlyAllocationForEnvelope(envelopeId: string): number {
+    return this.monthlyAllocationMap()[envelopeId] ?? 0;
   }
 
   remainingForEnvelope(envelopeId: string): number {
@@ -1062,9 +1077,22 @@ export class Envelopes implements OnInit {
     }
   }
 
-  onTimePeriodChange(value: SpentTimePeriod): void {
-    this.dashboardState.spentTimePeriod.set(value);
-    this.dashboardState.loadSpentSummaries();
+  /** Human-readable label for the currently viewed month */
+  protected readonly viewedMonthLabel = computed(() => {
+    const str = this.dashboardState.viewedMonth();
+    const [year, month] = str.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  });
+
+  /** Navigate to previous or next month */
+  navigateMonth(direction: number): void {
+    const str = this.dashboardState.viewedMonth();
+    const [year, month] = str.split('-').map(Number);
+    const date = new Date(year, month - 1 + direction, 1);
+    const newYear = date.getFullYear();
+    const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+    this.dashboardState.loadMonthData(`${newYear}-${newMonth}-01`);
   }
 
   // ── Category helpers ──────────────────────────────────────────
@@ -1121,6 +1149,11 @@ export class Envelopes implements OnInit {
       .reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0);
   }
 
+  categoryMonthlyAllocated(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + this.monthlyAllocationForEnvelope(e.id!), 0);
+  }
+
   categorySpent(categoryId: string): number {
     return this.envelopesForCategory(categoryId)
       .reduce((sum, e) => sum + this.spentForEnvelope(e.id!), 0);
@@ -1170,18 +1203,37 @@ export class Envelopes implements OnInit {
     this.saveEnvelope(envelope, updated, input);
   }
 
-  /** Auto-save balance on blur */
+  /** Auto-save monthly allocation on blur */
   onBalanceBlur(event: Event, envelope: EnvelopeDTO): void {
     const input = event.target as HTMLInputElement;
     const newBalance = parseFloat(input.value);
-    if (isNaN(newBalance) || newBalance < 0 || newBalance === envelope.allocatedBalance) {
-      // Revert invalid values
-      input.value = String(envelope.allocatedBalance);
+    const currentAllocation = this.monthlyAllocationForEnvelope(envelope.id!);
+    if (isNaN(newBalance) || newBalance < 0 || newBalance === currentAllocation) {
+      input.value = String(currentAllocation);
       return;
     }
 
-    const updated: EnvelopeDTO = { ...envelope, allocatedBalance: newBalance };
-    this.saveEnvelope(envelope, updated, input);
+    const id = envelope.id!;
+    const month = this.dashboardState.viewedMonth();
+    this.savingId.set(id);
+
+    // Optimistic update
+    const previousAllocation = currentAllocation;
+    this.dashboardState.updateMonthlyAllocation(id, newBalance);
+
+    this.envelopeApi.setAllocation(id, month, { amount: newBalance }).subscribe({
+      next: () => {
+        // Reload only envelopes to get updated allocatedBalance (all-time total)
+        this.dashboardState.loadEnvelopes();
+        this.savingId.set(null);
+      },
+      error: () => {
+        // Revert on failure
+        this.dashboardState.updateMonthlyAllocation(id, previousAllocation);
+        input.value = String(previousAllocation);
+        this.savingId.set(null);
+      },
+    });
   }
 
   /** Blur the input on Enter key */

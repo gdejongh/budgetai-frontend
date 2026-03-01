@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   inject,
   signal,
+  computed,
 } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -14,6 +15,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
 import { CreateEnvelopeRequest } from '../../../core/api/model/createEnvelopeRequest';
+import { DashboardStateService } from '../dashboard-state.service';
 import { ConfettiService } from '../../../shared/services/confetti.service';
 import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
@@ -60,7 +62,7 @@ export interface CreateEnvelopeDialogData {
           </mat-form-field>
 
           <mat-form-field appearance="fill">
-            <mat-label>Initial Allocation</mat-label>
+            <mat-label>{{ allocationLabel() }}</mat-label>
             <span matTextPrefix>$&nbsp;</span>
             <input matInput type="number" formControlName="allocatedBalance"
                    placeholder="0.00" step="0.01" min="0"
@@ -175,10 +177,17 @@ export class CreateEnvelopeDialog {
   private readonly dialogRef = inject(MatDialogRef<CreateEnvelopeDialog>);
   private readonly data: CreateEnvelopeDialogData = inject(MAT_DIALOG_DATA);
   private readonly envelopeApi = inject(EnvelopeControllerService);
+  private readonly dashboardState = inject(DashboardStateService);
   private readonly confetti = inject(ConfettiService);
   private readonly fb = inject(FormBuilder);
 
   protected readonly loading = signal(false);
+
+  protected readonly allocationLabel = computed(() => {
+    const month = this.dashboardState.viewedMonth();
+    const date = new Date(month + 'T00:00:00');
+    return date.toLocaleString('default', { month: 'long', year: 'numeric' }) + ' Allocation';
+  });
   protected readonly errorMessage = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
