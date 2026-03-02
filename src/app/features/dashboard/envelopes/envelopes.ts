@@ -223,7 +223,7 @@ import {
                                       class="goal-btn"
                                       (click)="openSavingsGoalDialog(envelope)"
                                       [attr.aria-label]="envelope.goalType ? 'Edit savings goal for ' + envelope.name : 'Set savings goal for ' + envelope.name">
-                                <mat-icon>{{ envelope.goalType ? 'flag' : 'outlined_flag' }}</mat-icon>
+                                <mat-icon>trending_up</mat-icon>
                               </button>
                               <button mat-icon-button
                                       class="delete-btn"
