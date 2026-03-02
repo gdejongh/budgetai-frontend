@@ -13,5 +13,6 @@ export interface EnvelopeCategoryDTO {
     id?: string;
     appUserId: string;
     name: string;
+    categoryType?: string;
     createdAt?: string;
 }

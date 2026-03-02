@@ -127,6 +127,7 @@ import {
                            class="inline-input category-name-input"
                            type="text"
                            [value]="category.name"
+                           [readOnly]="category.categoryType === 'CC_PAYMENT'"
                            (blur)="onCategoryNameBlur($event, category)"
                            (keydown.enter)="blurTarget($event)"
                            aria-label="Category name" />
@@ -151,17 +152,19 @@ import {
                   </span>
                 </div>
                 <div class="category-actions" (click)="$event.stopPropagation()">
-                  <button mat-icon-button
-                          (click)="openCreateEnvelopeDialog(category.id!)"
-                          [attr.aria-label]="'Add envelope to ' + category.name">
-                    <mat-icon>add</mat-icon>
-                  </button>
-                  <button mat-icon-button
-                          class="delete-btn"
-                          (click)="deleteCategory(category.id!)"
-                          [attr.aria-label]="'Delete category ' + category.name">
-                    <mat-icon>delete_outline</mat-icon>
-                  </button>
+                  @if (category.categoryType !== 'CC_PAYMENT') {
+                    <button mat-icon-button
+                            (click)="openCreateEnvelopeDialog(category.id!)"
+                            [attr.aria-label]="'Add envelope to ' + category.name">
+                      <mat-icon>add</mat-icon>
+                    </button>
+                    <button mat-icon-button
+                            class="delete-btn"
+                            (click)="deleteCategory(category.id!)"
+                            [attr.aria-label]="'Delete category ' + category.name">
+                      <mat-icon>delete_outline</mat-icon>
+                    </button>
+                  }
                 </div>
               </div>
 
@@ -179,17 +182,26 @@ import {
                       <div
                         class="envelope-card glass-card neon-border"
                         [class.envelope-negative]="remainingForEnvelope(envelope.id!) < 0"
+                        [class.cc-payment-envelope]="envelope.envelopeType === 'CC_PAYMENT'"
                       >
                         <div class="card-header">
-                          <div class="card-icon">
-                            <mat-icon>mail</mat-icon>
+                          <div class="card-icon" [class.cc-payment-icon]="envelope.envelopeType === 'CC_PAYMENT'">
+                            <mat-icon>{{ envelope.envelopeType === 'CC_PAYMENT' ? 'credit_card' : 'mail' }}</mat-icon>
                           </div>
-                          <button mat-icon-button
-                                  class="delete-btn"
-                                  (click)="deleteEnvelope(envelope.id!)"
-                                  [attr.aria-label]="'Delete envelope ' + envelope.name">
-                            <mat-icon>delete_outline</mat-icon>
-                          </button>
+                          @if (envelope.envelopeType === 'CC_PAYMENT') {
+                            <span class="envelope-type-badge cc-payment-badge">CC Payment</span>
+                          }
+                          @if (remainingForEnvelope(envelope.id!) < 0) {
+                            <span class="envelope-type-badge overspent-badge">Overspent</span>
+                          }
+                          @if (envelope.envelopeType !== 'CC_PAYMENT') {
+                            <button mat-icon-button
+                                    class="delete-btn"
+                                    (click)="deleteEnvelope(envelope.id!)"
+                                    [attr.aria-label]="'Delete envelope ' + envelope.name">
+                              <mat-icon>delete_outline</mat-icon>
+                            </button>
+                          }
                         </div>
 
                         <div class="editable-field name-field">
@@ -198,6 +210,7 @@ import {
                                  class="inline-input name-input"
                                  type="text"
                                  [value]="envelope.name"
+                                 [readOnly]="envelope.envelopeType === 'CC_PAYMENT'"
                                  (blur)="onNameBlur($event, envelope)"
                                  (keydown.enter)="blurTarget($event)"
                                  aria-label="Envelope name" />
@@ -582,6 +595,38 @@ import {
       box-shadow: 0 0 0 2px var(--danger, #ef4444), 0 2px 12px 0 rgba(239, 68, 68, 0.08);
       background: rgba(239, 68, 68, 0.06);
       color: var(--danger, #ef4444);
+    }
+
+    .cc-payment-envelope {
+      border-color: rgba(251, 146, 60, 0.2) !important;
+    }
+
+    .cc-payment-icon {
+      background: rgba(251, 146, 60, 0.12) !important;
+
+      mat-icon {
+        color: #fb923c !important;
+      }
+    }
+
+    .envelope-type-badge {
+      font-size: 0.6rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+
+      &.cc-payment-badge {
+        background: rgba(251, 146, 60, 0.12);
+        color: #fb923c;
+      }
+
+      &.overspent-badge {
+        background: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+      }
     }
 
     .card-header {

@@ -15,6 +15,8 @@ export interface EnvelopeDTO {
     envelopeCategoryId: string;
     name: string;
     allocatedBalance: number;
+    envelopeType?: string;
+    linkedAccountId?: string;
     createdAt?: string;
 }
 

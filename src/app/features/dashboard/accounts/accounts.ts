@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
-import { DatePipe } from '@angular/common';
+import { CurrencyPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -33,6 +33,7 @@ import {
   selector: 'app-accounts',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CurrencyPipe,
     DatePipe,
     MatIconModule,
     MatButtonModule,
@@ -138,6 +139,13 @@ import {
             </div>
             @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
               <span class="debt-label">balance owed</span>
+            }
+
+            @if (getUncoveredDebt(account) > 0) {
+              <div class="uncovered-debt-warning" role="status">
+                <mat-icon>warning_amber</mat-icon>
+                <span>{{ getUncoveredDebt(account) | currency:'USD':'symbol':'1.2-2' }} uncovered debt</span>
+              </div>
             }
 
             @if (account.createdAt) {
@@ -374,6 +382,26 @@ import {
 
       &:hover {
         background: rgba(251, 146, 60, 0.08);
+      }
+    }
+
+    .uncovered-debt-warning {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.6rem;
+      margin-top: 0.25rem;
+      border-radius: var(--radius-sm);
+      background: rgba(239, 68, 68, 0.1);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #ef4444;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #ef4444;
       }
     }
 
@@ -679,6 +707,11 @@ export class Accounts implements OnInit {
     return this.txnCountMap()[accountId] ?? 0;
   }
 
+  getUncoveredDebt(account: BankAccountDTO): number {
+    if (account.accountType !== 'CREDIT_CARD' || !account.id) return 0;
+    return this.dashboardState.uncoveredDebtByCard().get(account.id) ?? 0;
+  }
+
   ngOnInit(): void {
     // Data is loaded by the layout, but refresh if empty
     if (this.dashboardState.accounts().length === 0 && !this.dashboardState.loading()) {
@@ -696,6 +729,10 @@ export class Accounts implements OnInit {
       if (result) {
         this.dashboardState.addAccount(result);
         this.dashboardState.loadTransactions();
+        // If a CC was created, refresh to pick up auto-created CC Payment envelope
+        if (result.accountType === 'CREDIT_CARD') {
+          this.dashboardState.refresh();
+        }
       }
     });
   }
@@ -763,8 +800,14 @@ export class Accounts implements OnInit {
 
     this.bankAccountApi.deleteBankAccount(id).subscribe({
       next: () => {
+        const account = this.dashboardState.accounts().find(a => a.id === id);
         this.dashboardState.removeAccount(id);
         this.dashboardState.removeTransactionsForAccount(id);
+        // If a CC was deleted, refresh envelopes/categories (backend cascades CC Payment envelope)
+        if (account?.accountType === 'CREDIT_CARD') {
+          this.dashboardState.loadEnvelopes();
+          this.dashboardState.loadAll();
+        }
         this.deletingId.set(null);
       },
       error: () => {

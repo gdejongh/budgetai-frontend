@@ -83,6 +83,46 @@ export class DashboardStateService {
   readonly envelopeCount = computed(() => this.envelopes().length);
   readonly transactionCount = computed(() => this.transactions().length);
 
+  /** Map of CC account ID → its linked CC Payment envelope. */
+  readonly ccPaymentEnvelopes = computed(() => {
+    const map = new Map<string, EnvelopeDTO>();
+    for (const env of this.envelopes()) {
+      if (env.envelopeType === 'CC_PAYMENT' && env.linkedAccountId) {
+        map.set(env.linkedAccountId, env);
+      }
+    }
+    return map;
+  });
+
+  /**
+   * Map of CC account ID → uncovered debt amount.
+   * Uncovered debt = total CC debt − CC Payment envelope allocation.
+   * A positive number means debt that hasn't been "covered" by envelope spending.
+   */
+  readonly uncoveredDebtByCard = computed(() => {
+    const map = new Map<string, number>();
+    for (const cc of this.creditCards()) {
+      const debt = cc.currentBalance ?? 0;
+      const ccEnv = this.ccPaymentEnvelopes().get(cc.id!);
+      const covered = ccEnv?.allocatedBalance ?? 0;
+      const uncovered = debt - covered;
+      if (uncovered > 0) {
+        map.set(cc.id!, uncovered);
+      }
+    }
+    return map;
+  });
+
+  /** Only user-created (non-CC-Payment) envelopes, for allocation totals. */
+  readonly standardEnvelopes = computed(() =>
+    this.envelopes().filter(e => e.envelopeType !== 'CC_PAYMENT')
+  );
+
+  /** Only user-created (non-CC-Payment) categories. */
+  readonly standardCategories = computed(() =>
+    this.envelopeCategories().filter(c => c.categoryType !== 'CC_PAYMENT')
+  );
+
   loadAll(): void {
     // Don't fire requests if there's no auth token yet
     if (!this.authService.getAccessToken()) {
