@@ -1105,6 +1105,12 @@ export class Transactions implements OnInit {
     dialogRef.afterClosed().subscribe((result) => {
       if (result) {
         this.dashboardState.addTransaction(result);
+
+        // If a CC transaction was created with an envelope, reload envelopes
+        // so the CC Payment envelope's allocatedBalance reflects the coverage.
+        if (this.dashboardState.isCreditCard(result.bankAccountId) && result.envelopeId) {
+          this.dashboardState.loadEnvelopes();
+        }
       }
     });
   }
@@ -1126,6 +1132,15 @@ export class Transactions implements OnInit {
     dialogRef.afterClosed().subscribe((result: EditTransactionDialogResult | undefined) => {
       if (result) {
         this.dashboardState.updateTransaction(result.saved.id!, result.original, result.saved);
+
+        // If envelope assignment changed on a CC transaction, reload envelopes
+        // so the CC Payment envelope's allocatedBalance is up to date.
+        const isCCTxn = this.dashboardState.isCreditCard(result.saved.bankAccountId)
+          || this.dashboardState.isCreditCard(result.original.bankAccountId);
+        const envelopeChanged = result.original.envelopeId !== result.saved.envelopeId;
+        if (isCCTxn && envelopeChanged) {
+          this.dashboardState.loadEnvelopes();
+        }
       }
     });
   }
@@ -1145,10 +1160,19 @@ export class Transactions implements OnInit {
     const id = this.deletingId();
     if (!id) return;
 
+    // Capture transaction details before removal for post-delete logic
+    const txn = this.dashboardState.transactions().find(t => t.id === id);
+
     this.transactionApi.deleteTransaction(id).subscribe({
       next: () => {
         this.dashboardState.removeTransaction(id);
         this.deletingId.set(null);
+
+        // If a CC transaction with an envelope was deleted, reload envelopes
+        // so the CC Payment envelope's allocatedBalance is updated.
+        if (txn && this.dashboardState.isCreditCard(txn.bankAccountId) && txn.envelopeId) {
+          this.dashboardState.loadEnvelopes();
+        }
       },
       error: () => {
         this.deletingId.set(null);

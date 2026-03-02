@@ -19,6 +19,7 @@ import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateAccountDialog } from './create-account-dialog';
 import { CCPaymentDialog } from './cc-payment-dialog';
+import { ReconcileBalanceDialog } from './reconcile-balance-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
@@ -121,31 +122,44 @@ import {
                      aria-label="Account name" />
             </div>
 
-            <div class="editable-field balance-field"
-                 [class.debt-balance]="account.accountType === 'CREDIT_CARD' && account.currentBalance > 0">
-              <label class="sr-only" [attr.for]="'acct-balance-' + account.id">
-                {{ account.accountType === 'CREDIT_CARD' ? 'Balance owed' : 'Current balance' }}
-              </label>
-              <span class="currency-prefix">$</span>
-              <input [id]="'acct-balance-' + account.id"
-                     class="inline-input balance-input"
-                     type="number"
-                     step="0.01"
-                     min="0"
-                     [value]="account.currentBalance"
-                     (blur)="onBalanceBlur($event, account)"
-                     (keydown.enter)="blurTarget($event)"
-                     [attr.aria-label]="account.accountType === 'CREDIT_CARD' ? 'Balance owed' : 'Current balance'" />
-            </div>
+            @if (account.accountType === 'CREDIT_CARD') {
+              <div class="balance-field cc-balance-display"
+                   [class.debt-balance]="account.currentBalance > 0"
+                   [attr.aria-label]="'Balance owed'"
+                   title="Credit card balances update from transactions. Use 'Make Payment' or add transactions to adjust.">
+                <span class="currency-prefix">$</span>
+                <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
+              </div>
+            } @else {
+              <div class="editable-field balance-field">
+                <label class="sr-only" [attr.for]="'acct-balance-' + account.id">
+                  Current balance
+                </label>
+                <span class="currency-prefix">$</span>
+                <input [id]="'acct-balance-' + account.id"
+                       class="inline-input balance-input"
+                       type="number"
+                       step="0.01"
+                       min="0"
+                       [value]="account.currentBalance"
+                       (blur)="onBalanceBlur($event, account)"
+                       (keydown.enter)="blurTarget($event)"
+                       aria-label="Current balance" />
+              </div>
+            }
             @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
               <span class="debt-label">balance owed</span>
             }
 
             @if (getUncoveredDebt(account) > 0) {
-              <div class="uncovered-debt-warning" role="status">
+              <button class="uncovered-debt-warning"
+                      (click)="navigateToEnvelopes()"
+                      role="status"
+                      title="Allocate funds to the CC Payment envelope to cover this debt">
                 <mat-icon>warning_amber</mat-icon>
                 <span>{{ getUncoveredDebt(account) | currency:'USD':'symbol':'1.2-2' }} uncovered debt</span>
-              </div>
+                <mat-icon class="link-chevron">chevron_right</mat-icon>
+              </button>
             }
 
             @if (account.createdAt) {
@@ -175,6 +189,16 @@ import {
                       [attr.aria-label]="'Make payment on ' + account.name">
                 <mat-icon>payments</mat-icon>
                 Make Payment
+              </button>
+            }
+
+            @if (account.accountType === 'CREDIT_CARD') {
+              <button mat-stroked-button
+                      class="adjust-balance-btn"
+                      (click)="openReconcileDialog(account)"
+                      [attr.aria-label]="'Adjust balance for ' + account.name">
+                <mat-icon>tune</mat-icon>
+                Adjust Balance
               </button>
             }
           </div>
@@ -350,9 +374,25 @@ import {
 
     .debt-balance {
       .currency-prefix,
-      .balance-input {
+      .balance-input,
+      .balance-readonly {
         color: #fb923c;
       }
+    }
+
+    .cc-balance-display {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      cursor: default;
+    }
+
+    .balance-readonly {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent-primary);
+      letter-spacing: -0.02em;
+      padding: 0.25rem 0.5rem;
     }
 
     .debt-label {
@@ -385,23 +425,69 @@ import {
       }
     }
 
+    .adjust-balance-btn {
+      width: 100%;
+      margin-top: 0.35rem;
+      color: var(--text-muted);
+      border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
+      font-size: 0.8rem;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        margin-right: 0.25rem;
+      }
+
+      &:hover {
+        color: #fb923c;
+        border-color: rgba(251, 146, 60, 0.3);
+        background: rgba(251, 146, 60, 0.04);
+      }
+    }
+
     .uncovered-debt-warning {
       display: flex;
       align-items: center;
       gap: 0.35rem;
+      width: 100%;
       padding: 0.4rem 0.6rem;
       margin-top: 0.25rem;
       border-radius: var(--radius-sm);
       background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
       font-size: 0.75rem;
       font-weight: 500;
+      font-family: inherit;
       color: #ef4444;
+      cursor: pointer;
+      transition: background var(--transition-fast), border-color var(--transition-fast);
 
       mat-icon {
         font-size: 16px;
         width: 16px;
         height: 16px;
         color: #ef4444;
+      }
+
+      .link-chevron {
+        margin-left: auto;
+        opacity: 0;
+        transition: opacity var(--transition-fast);
+      }
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.35);
+
+        .link-chevron {
+          opacity: 1;
+        }
+      }
+
+      &:focus-visible {
+        outline: 2px solid #ef4444;
+        outline-offset: -2px;
       }
     }
 
@@ -751,6 +837,20 @@ export class Accounts implements OnInit {
     });
   }
 
+  openReconcileDialog(account: BankAccountDTO): void {
+    const dialogRef = this.dialog.open(ReconcileBalanceDialog, {
+      width: '440px',
+      panelClass: 'dark-dialog',
+      data: { account },
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        // Account and transactions already updated inside the dialog on success
+      }
+    });
+  }
+
   /** Auto-save name on blur */
   onNameBlur(event: Event, account: BankAccountDTO): void {
     const input = event.target as HTMLInputElement;
@@ -768,6 +868,7 @@ export class Accounts implements OnInit {
 
   /** Auto-save balance on blur */
   onBalanceBlur(event: Event, account: BankAccountDTO): void {
+    if (account.accountType === 'CREDIT_CARD') return;
     const input = event.target as HTMLInputElement;
     const newBalance = parseFloat(input.value);
     if (isNaN(newBalance) || newBalance < 0) {
@@ -867,5 +968,9 @@ export class Accounts implements OnInit {
     this.router.navigate(['/dashboard/transactions'], {
       queryParams: { bankAccountId: id },
     });
+  }
+
+  navigateToEnvelopes(): void {
+    this.router.navigate(['/dashboard/envelopes']);
   }
 }
