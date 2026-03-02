@@ -56,4 +56,8 @@ export class Layout implements OnInit {
   onDismissBanner(): void {
     this.bannerDismissed.set(true);
   }
+
+  onRetry(): void {
+    this.dashboardState.loadAll();
+  }
 }

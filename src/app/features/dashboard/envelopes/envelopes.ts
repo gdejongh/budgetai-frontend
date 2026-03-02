@@ -16,6 +16,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { EnvelopeControllerService } from '../../../core/api/api/envelopeController.service';
 import { EnvelopeCategoryControllerService } from '../../../core/api/api/envelopeCategoryController.service';
@@ -48,6 +49,7 @@ import {
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
+    MatSnackBarModule,
     CdkConnectedOverlay,
     CdkOverlayOrigin,
     Counter,
@@ -127,6 +129,7 @@ import {
                     <input [id]="'cat-name-' + category.id"
                            class="inline-input category-name-input"
                            type="text"
+                           maxlength="100"
                            [value]="category.name"
                            [readOnly]="category.categoryType === 'CC_PAYMENT'"
                            (blur)="onCategoryNameBlur($event, category)"
@@ -240,6 +243,7 @@ import {
                           <input [id]="'name-' + envelope.id"
                                  class="inline-input name-input"
                                  type="text"
+                                 maxlength="100"
                                  [value]="envelope.name"
                                  [readOnly]="envelope.envelopeType === 'CC_PAYMENT'"
                                  (blur)="onNameBlur($event, envelope)"
@@ -278,6 +282,7 @@ import {
                                            class="inline-input balance-input editable-highlight"
                                            type="number"
                                            step="0.01"
+                                           min="0"
                                            [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
@@ -334,6 +339,7 @@ import {
                                            class="inline-input balance-input editable-highlight"
                                            type="number"
                                            step="0.01"
+                                           min="0"
                                            [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
@@ -1306,6 +1312,7 @@ export class Envelopes implements OnInit {
   private readonly envelopeApi = inject(EnvelopeControllerService);
   private readonly categoryApi = inject(EnvelopeCategoryControllerService);
   private readonly router = inject(Router);
+  private readonly snackBar = inject(MatSnackBar);
 
   protected readonly deletingId = signal<string | null>(null);
   protected readonly deletingType = signal<'envelope' | 'category'>('envelope');
@@ -1652,10 +1659,11 @@ export class Envelopes implements OnInit {
         this.dashboardState.updateCategory(category.id!, saved);
         this.savingId.set(null);
       },
-      error: () => {
+      error: (err) => {
         this.dashboardState.updateCategory(category.id!, category);
         input.value = category.name;
         this.savingId.set(null);
+        this.showError(err, 'Failed to update category name');
       },
     });
   }
@@ -1687,6 +1695,12 @@ export class Envelopes implements OnInit {
       return;
     }
 
+    if (newBalance < 0) {
+      input.value = String(currentAllocation);
+      this.showError(null, 'Allocation amount cannot be negative');
+      return;
+    }
+
     const id = envelope.id!;
     const month = this.dashboardState.viewedMonth();
     this.savingId.set(id);
@@ -1701,11 +1715,12 @@ export class Envelopes implements OnInit {
         this.dashboardState.loadEnvelopes();
         this.savingId.set(null);
       },
-      error: () => {
+      error: (err) => {
         // Revert on failure
         this.dashboardState.updateMonthlyAllocation(id, previousAllocation);
         input.value = String(previousAllocation);
         this.savingId.set(null);
+        this.showError(err, 'Failed to update allocation');
       },
     });
   }
@@ -1730,14 +1745,20 @@ export class Envelopes implements OnInit {
 
     if (this.deletingType() === 'category') {
       const category = this.dashboardState.envelopeCategories().find(c => c.id === id);
+      const removedEnvelopes = this.dashboardState.envelopes().filter(e => e.envelopeCategoryId === id);
       this.dashboardState.removeCategory(id);
       this.deletingId.set(null);
 
       this.categoryApi.deleteEnvelopeCategory(id).subscribe({
-        error: () => {
+        error: (err) => {
           if (category) {
             this.dashboardState.addCategory(category);
+            // Restore envelopes that were removed with the category
+            for (const env of removedEnvelopes) {
+              this.dashboardState.addEnvelope(env);
+            }
           }
+          this.showError(err, 'Failed to delete category');
         },
       });
     } else {
@@ -1746,10 +1767,11 @@ export class Envelopes implements OnInit {
       this.deletingId.set(null);
 
       this.envelopeApi.deleteEnvelope(id).subscribe({
-        error: () => {
+        error: (err) => {
           if (envelope) {
             this.dashboardState.addEnvelope(envelope);
           }
+          this.showError(err, 'Failed to delete envelope');
         },
       });
     }
@@ -1768,7 +1790,7 @@ export class Envelopes implements OnInit {
         this.dashboardState.updateEnvelope(id, saved);
         this.savingId.set(null);
       },
-      error: () => {
+      error: (err) => {
         // Revert on failure
         this.dashboardState.updateEnvelope(id, original);
         if (input.type === 'number') {
@@ -1777,6 +1799,7 @@ export class Envelopes implements OnInit {
           input.value = original.name;
         }
         this.savingId.set(null);
+        this.showError(err, 'Failed to update envelope');
       },
     });
   }
@@ -1817,5 +1840,13 @@ export class Envelopes implements OnInit {
         queryParams: { envelopeId: id },
       });
     }
+  }
+
+  private showError(err: unknown, fallback: string): void {
+    const message = (err as { error?: { message?: string } })?.error?.message || fallback;
+    this.snackBar.open(message, 'Dismiss', {
+      duration: 5000,
+      panelClass: 'error-snackbar',
+    });
   }
 }

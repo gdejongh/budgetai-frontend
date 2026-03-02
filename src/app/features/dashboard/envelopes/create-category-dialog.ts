@@ -163,7 +163,7 @@ export class CreateCategoryDialog {
   protected readonly errorMessage = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
-    name: ['', Validators.required],
+    name: ['', [Validators.required, Validators.maxLength(100)]],
   });
 
   onSubmit(): void {

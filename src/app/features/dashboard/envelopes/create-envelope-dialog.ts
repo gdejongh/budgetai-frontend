@@ -191,7 +191,7 @@ export class CreateEnvelopeDialog {
   protected readonly errorMessage = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
-    name: ['', Validators.required],
+    name: ['', [Validators.required, Validators.maxLength(100)]],
     allocatedBalance: [0, [Validators.min(0)]],
   });
 

@@ -43,6 +43,9 @@ export class DashboardStateService {
   readonly viewedMonth = signal(this.getCurrentMonthStr());
   readonly loading = signal(true);
 
+  /** Non-null when loadAll() partially or fully failed. */
+  readonly loadError = signal<string | null>(null);
+
   readonly envelopesByCategory = computed(() => {
     const map = new Map<string, EnvelopeDTO[]>();
     for (const envelope of this.envelopes()) {
@@ -155,22 +158,25 @@ export class DashboardStateService {
     }
 
     this.loading.set(true);
+    this.loadError.set(null);
+
+    const failures: string[] = [];
 
     forkJoin({
       accounts: this.bankAccountApi.getBankAccounts().pipe(
-        catchError(err => { console.error('Failed to load accounts:', err); return of([] as BankAccountDTO[]); })
+        catchError(err => { console.error('Failed to load accounts:', err); failures.push('accounts'); return of([] as BankAccountDTO[]); })
       ),
       envelopeCategories: this.envelopeCategoryApi.getEnvelopeCategories().pipe(
-        catchError(err => { console.error('Failed to load envelope categories:', err); return of([] as EnvelopeCategoryDTO[]); })
+        catchError(err => { console.error('Failed to load envelope categories:', err); failures.push('categories'); return of([] as EnvelopeCategoryDTO[]); })
       ),
       envelopes: this.envelopeApi.getEnvelopes().pipe(
-        catchError(err => { console.error('Failed to load envelopes:', err); return of([] as EnvelopeDTO[]); })
+        catchError(err => { console.error('Failed to load envelopes:', err); failures.push('envelopes'); return of([] as EnvelopeDTO[]); })
       ),
       transactions: this.transactionApi.getAllTransactions().pipe(
-        catchError(err => { console.error('Failed to load transactions:', err); return of([] as TransactionDTO[]); })
+        catchError(err => { console.error('Failed to load transactions:', err); failures.push('transactions'); return of([] as TransactionDTO[]); })
       ),
       monthlyAllocations: this.envelopeApi.getMonthlyAllocations(this.viewedMonth()).pipe(
-        catchError(err => { console.error('Failed to load monthly allocations:', err); return of([] as EnvelopeAllocationDTO[]); })
+        catchError(err => { console.error('Failed to load monthly allocations:', err); failures.push('allocations'); return of([] as EnvelopeAllocationDTO[]); })
       ),
     }).subscribe({
       next: ({ accounts, envelopeCategories, envelopes, transactions, monthlyAllocations }) => {
@@ -180,11 +186,15 @@ export class DashboardStateService {
         this.transactions.set(transactions);
         this.monthlyAllocations.set(monthlyAllocations);
         this.loading.set(false);
+        if (failures.length > 0) {
+          this.loadError.set(`Failed to load: ${failures.join(', ')}. Some data may be missing.`);
+        }
         this.loadSpentSummaries();
       },
       error: (err) => {
         console.error('Dashboard loadAll failed:', err);
         this.loading.set(false);
+        this.loadError.set('Failed to load dashboard data. Please try again.');
       },
     });
   }
@@ -227,7 +237,10 @@ export class DashboardStateService {
   loadTransactions(): void {
     this.transactionApi.getAllTransactions().subscribe({
       next: (transactions) => this.transactions.set(transactions),
-      error: () => {},
+      error: (err) => {
+        console.error('Failed to reload transactions:', err);
+        this.loadError.set('Failed to reload transactions.');
+      },
     });
   }
 

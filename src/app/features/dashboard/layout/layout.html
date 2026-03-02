@@ -52,6 +52,16 @@
     </mat-toolbar>
 
     <main class="page-content">
+      @if (dashboardState.loadError(); as errorMsg) {
+        <div class="load-error-banner" role="alert">
+          <mat-icon>error_outline</mat-icon>
+          <span>{{ errorMsg }}</span>
+          <button mat-button color="primary" (click)="onRetry()">Retry</button>
+          <button mat-icon-button (click)="dashboardState.loadError.set(null)" aria-label="Dismiss error">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
       @if (!bannerDismissed() && !dashboardState.loading() && dashboardState.unallocatedAmount() > 0) {
         <app-unallocated-banner
           [amount]="dashboardState.unallocatedAmount()"
