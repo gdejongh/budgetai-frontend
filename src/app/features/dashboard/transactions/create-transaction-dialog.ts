@@ -15,6 +15,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { TransactionControllerService } from '../../../core/api/api/transactionController.service';
@@ -36,6 +37,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatAutocompleteModule,
   ],
   animations: [fadeIn, slideInUp],
   template: `
@@ -146,12 +148,26 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
           <mat-form-field appearance="fill">
             <mat-label>Envelope (optional)</mat-label>
-            <mat-select formControlName="envelopeId">
+            <input matInput
+                   formControlName="envelopeId"
+                   [matAutocomplete]="envelopeAuto"
+                   (input)="onEnvelopeInput($event)"
+                   placeholder="Search envelopes..." />
+            @if (form.controls.envelopeId.value) {
+              <button matSuffix mat-icon-button type="button"
+                      (click)="clearEnvelope()"
+                      aria-label="Clear envelope">
+                <mat-icon>close</mat-icon>
+              </button>
+            }
+            <mat-autocomplete #envelopeAuto="matAutocomplete"
+                              [displayWith]="envelopeDisplayFn"
+                              (optionSelected)="onEnvelopeSelected($event)">
               <mat-option value="">None</mat-option>
-              @for (envelope of dashboardState.envelopes(); track envelope.id) {
+              @for (envelope of filteredEnvelopes(); track envelope.id) {
                 <mat-option [value]="envelope.id">{{ envelope.name }}</mat-option>
               }
-            </mat-select>
+            </mat-autocomplete>
           </mat-form-field>
         </form>
       </mat-dialog-content>
@@ -317,12 +333,26 @@ export class CreateTransactionDialog {
   protected readonly errorMessage = signal('');
   protected readonly transactionType = signal<'deposit' | 'withdrawal'>('withdrawal');
   protected readonly selectedAccountId = signal('');
+  protected readonly envelopeSearchText = signal('');
 
   protected readonly isCreditCard = computed(() => {
     const id = this.selectedAccountId();
     if (!id) return false;
     return this.dashboardState.isCreditCard(id);
   });
+
+  protected readonly filteredEnvelopes = computed(() => {
+    const search = this.envelopeSearchText().toLowerCase();
+    const envelopes = this.dashboardState.standardEnvelopes();
+    if (!search) return envelopes;
+    return envelopes.filter(e => e.name.toLowerCase().includes(search));
+  });
+
+  protected readonly envelopeDisplayFn = (value: string): string => {
+    if (!value) return '';
+    const envelope = this.dashboardState.standardEnvelopes().find(e => e.id === value);
+    return envelope?.name ?? '';
+  };
 
   protected readonly dialogTitle = computed(() => {
     if (this.isCreditCard()) {
@@ -376,6 +406,19 @@ export class CreateTransactionDialog {
     if (ctrl.value === null) {
       ctrl.setValue(0);
     }
+  }
+
+  onEnvelopeInput(event: Event): void {
+    this.envelopeSearchText.set((event.target as HTMLInputElement).value);
+  }
+
+  onEnvelopeSelected(event: { option: { value: string } }): void {
+    this.envelopeSearchText.set('');
+  }
+
+  clearEnvelope(): void {
+    this.form.controls.envelopeId.setValue('');
+    this.envelopeSearchText.set('');
   }
 
   onSubmit(): void {

@@ -97,6 +97,16 @@ export class DashboardStateService {
   readonly envelopeCount = computed(() => this.envelopes().length);
   readonly transactionCount = computed(() => this.transactions().length);
 
+  /** Envelope categories sorted with CC_PAYMENT always first. */
+  readonly sortedEnvelopeCategories = computed(() => {
+    const cats = this.envelopeCategories();
+    return [...cats].sort((a, b) => {
+      if (a.categoryType === 'CC_PAYMENT' && b.categoryType !== 'CC_PAYMENT') return -1;
+      if (a.categoryType !== 'CC_PAYMENT' && b.categoryType === 'CC_PAYMENT') return 1;
+      return 0;
+    });
+  });
+
   /** Map of CC account ID → its linked CC Payment envelope. */
   readonly ccPaymentEnvelopes = computed(() => {
     const map = new Map<string, EnvelopeDTO>();

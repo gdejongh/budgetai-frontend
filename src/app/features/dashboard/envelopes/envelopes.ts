@@ -112,7 +112,7 @@ import {
         </div>
 
         <div class="categories-list" @staggerFadeIn>
-          @for (category of dashboardState.envelopeCategories(); track category.id) {
+          @for (category of dashboardState.sortedEnvelopeCategories(); track category.id) {
             <section class="category-section glass-card neon-border">
               <div class="category-header" (click)="toggleCategory(category.id!)">
                 <button class="collapse-toggle" mat-icon-button
@@ -133,24 +133,46 @@ import {
                            aria-label="Category name" />
                   </div>
                 </div>
-                <div class="category-summary">
-                  <span class="cat-stat">
-                    <span class="cat-stat-label">Allocated</span>
-                    <span class="cat-stat-value">{{ categoryMonthlyAllocated(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
-                  </span>
-                  <span class="cat-stat">
-                    <span class="cat-stat-label">Spent</span>
-                    <span class="cat-stat-value spent-value">{{ categorySpent(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
-                  </span>
-                  <span class="cat-stat">
-                    <span class="cat-stat-label">Remaining</span>
-                    <span class="cat-stat-value"
-                          [class.remaining-positive]="categoryRemaining(category.id!) >= 0"
-                          [class.remaining-negative]="categoryRemaining(category.id!) < 0">
-                      {{ categoryRemaining(category.id!) | currency:'USD':'symbol':'1.2-2' }}
+                @if (category.categoryType === 'CC_PAYMENT') {
+                  <div class="category-summary">
+                    <span class="cat-stat">
+                      <span class="cat-stat-label">Total Debt</span>
+                      <span class="cat-stat-value">{{ ccCategoryTotalDebt(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
                     </span>
-                  </span>
-                </div>
+                    <span class="cat-stat">
+                      <span class="cat-stat-label">Funded</span>
+                      <span class="cat-stat-value">{{ ccCategoryTotalFunded(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                    </span>
+                    <span class="cat-stat">
+                      @if (ccCategoryTotalFunded(category.id!) >= ccCategoryTotalDebt(category.id!)) {
+                        <span class="cat-stat-label">Status</span>
+                        <span class="cat-stat-value cc-funded">Fully Funded</span>
+                      } @else {
+                        <span class="cat-stat-label">Underfunded</span>
+                        <span class="cat-stat-value remaining-negative">{{ ccCategoryTotalDebt(category.id!) - ccCategoryTotalFunded(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                      }
+                    </span>
+                  </div>
+                } @else {
+                  <div class="category-summary">
+                    <span class="cat-stat">
+                      <span class="cat-stat-label">Allocated</span>
+                      <span class="cat-stat-value">{{ categoryMonthlyAllocated(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                    </span>
+                    <span class="cat-stat">
+                      <span class="cat-stat-label">Spent</span>
+                      <span class="cat-stat-value spent-value">{{ categorySpent(category.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
+                    </span>
+                    <span class="cat-stat">
+                      <span class="cat-stat-label">Remaining</span>
+                      <span class="cat-stat-value"
+                            [class.remaining-positive]="categoryRemaining(category.id!) >= 0"
+                            [class.remaining-negative]="categoryRemaining(category.id!) < 0">
+                        {{ categoryRemaining(category.id!) | currency:'USD':'symbol':'1.2-2' }}
+                      </span>
+                    </span>
+                  </div>
+                }
                 <div class="category-actions" (click)="$event.stopPropagation()">
                   @if (category.categoryType !== 'CC_PAYMENT') {
                     <button mat-icon-button
@@ -216,7 +238,57 @@ import {
                                  aria-label="Envelope name" />
                         </div>
 
-                        <div class="envelope-finances">
+                        @if (envelope.envelopeType === 'CC_PAYMENT') {
+                          <div class="envelope-finances">
+                            <div class="finance-row" style="margin-bottom: 0.5rem;">
+                              <span class="finance-label" style="font-size:1rem;font-weight:700;">Card Balance</span>
+                              <span class="finance-value"
+                                    style="font-size:1.35rem;font-weight:900;"
+                                    aria-live="polite">
+                                {{ cardBalanceForEnvelope(envelope) | currency:'USD':'symbol':'1.2-2' }}
+                              </span>
+                            </div>
+                            <div class="remaining-progress-bar" role="progressbar"
+                                 [attr.aria-valuenow]="ccCoveragePercent(envelope)"
+                                 aria-valuemin="0" aria-valuemax="100"
+                                 [attr.aria-label]="'Funding coverage: ' + ccCoveragePercent(envelope) + '%'">
+                              <div class="progress-track">
+                                <div class="progress-fill"
+                                     [style.width]="ccCoveragePercent(envelope) + '%'"
+                                     [class.negative]="isEnvelopeUnhealthy(envelope)"
+                                ></div>
+                              </div>
+                            </div>
+                            <div class="finance-row allocated-row">
+                                <span class="finance-label">Allocated</span>
+                                <div class="editable-field balance-field">
+                                  <label class="sr-only" [attr.for]="'balance-' + envelope.id">Allocated balance</label>
+                                  <span class="currency-prefix">$</span>
+                                  <div class="allocated-input-wrapper">
+                                    <input [id]="'balance-' + envelope.id"
+                                           class="inline-input balance-input editable-highlight"
+                                           type="number"
+                                           step="0.01"
+                                           [value]="monthlyAllocationForEnvelope(envelope.id!)"
+                                           (blur)="onBalanceBlur($event, envelope)"
+                                           (keydown.enter)="blurTarget($event)"
+                                           aria-label="Allocated balance"
+                                           title="Edit allocated amount" />
+                                    <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
+                                  </div>
+                                </div>
+                            </div>
+                            <div class="finance-row">
+                              <span class="finance-label">Available for Payment</span>
+                              <span class="finance-value"
+                                    [class.remaining-positive]="!isEnvelopeUnhealthy(envelope)"
+                                    [class.remaining-negative]="isEnvelopeUnhealthy(envelope)">
+                                {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
+                              </span>
+                            </div>
+                          </div>
+                        } @else {
+                          <div class="envelope-finances">
                             <div class="finance-row remaining-row" style="margin-bottom: 0.5rem;">
                               <span class="finance-label" style="font-size:1rem;font-weight:700;">Remaining</span>
                               <span class="finance-value remaining-value"
@@ -227,7 +299,7 @@ import {
                                     [attr.aria-label]="'Remaining: ' + (remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2')">
                                 {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
                                 @if (isEnvelopeUnhealthy(envelope)) {
-                                  <mat-icon class="remaining-warning" [attr.aria-label]="envelope.envelopeType === 'CC_PAYMENT' ? 'Underfunded' : 'Overspent'">warning_amber</mat-icon>
+                                  <mat-icon class="remaining-warning" [attr.aria-label]="'Overspent'">warning_amber</mat-icon>
                                 }
                               </span>
                             </div>
@@ -253,7 +325,6 @@ import {
                                            class="inline-input balance-input editable-highlight"
                                            type="number"
                                            step="0.01"
-                                           min="0"
                                            [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
@@ -267,7 +338,8 @@ import {
                               <span class="finance-label">Spent</span>
                               <span class="finance-value spent-value">{{ spentForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
                             </div>
-                        </div>
+                          </div>
+                        }
 
                         @if (envelope.createdAt) {
                           <span class="card-date">Created {{ envelope.createdAt | date: 'mediumDate' }}</span>
@@ -285,7 +357,7 @@ import {
                                 (click)="togglePreview(envelope.id!)"
                                 [attr.aria-label]="'View transactions for ' + envelope.name">
                           <mat-icon>receipt_long</mat-icon>
-                          <span>{{ txnCountForEnvelope(envelope.id!) }} transactions</span>
+                          <span>{{ txnCountForEnvelope(envelope) }} transactions</span>
                           <mat-icon class="link-arrow">chevron_right</mat-icon>
                         </button>
                       </div>
@@ -729,7 +801,7 @@ import {
       color: var(--text-primary);
       letter-spacing: -0.02em;
       width: auto;
-      max-width: 5rem;
+      max-width: 7rem;
       text-align: right;
       padding: 0.15rem 0.35rem;
 
@@ -812,6 +884,12 @@ import {
         text-shadow: 0 0 10px rgba(239, 68, 68, 0.22);
         font-weight: 900;
       }
+
+    .cc-funded {
+      color: var(--success, #22c55e);
+      font-weight: 700;
+      text-shadow: 0 0 8px rgba(34, 197, 94, 0.22);
+    }
 
       .remaining-warning {
         color: var(--danger, #ef4444);
@@ -1041,8 +1119,12 @@ export class Envelopes implements OnInit {
   protected readonly previewTransactions = computed(() => {
     const id = this.activePreviewId();
     if (!id) return [];
-    return this.dashboardState.transactions()
-      .filter(t => t.envelopeId === id)
+    const envelope = this.dashboardState.envelopes().find(e => e.id === id);
+    const txns = this.dashboardState.transactions();
+    const filtered = envelope?.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId
+      ? txns.filter(t => t.bankAccountId === envelope.linkedAccountId)
+      : txns.filter(t => t.envelopeId === id);
+    return filtered
       .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
       .slice(0, 5);
   });
@@ -1050,7 +1132,11 @@ export class Envelopes implements OnInit {
   protected readonly previewTotalCount = computed(() => {
     const id = this.activePreviewId();
     if (!id) return 0;
-    return this.dashboardState.transactions().filter(t => t.envelopeId === id).length;
+    const envelope = this.dashboardState.envelopes().find(e => e.id === id);
+    const txns = this.dashboardState.transactions();
+    return envelope?.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId
+      ? txns.filter(t => t.bankAccountId === envelope.linkedAccountId).length
+      : txns.filter(t => t.envelopeId === id).length;
   });
 
   protected readonly previewEntityName = computed(() => {
@@ -1064,6 +1150,17 @@ export class Envelopes implements OnInit {
     for (const t of this.dashboardState.transactions()) {
       if (t.envelopeId) {
         map[t.envelopeId] = (map[t.envelopeId] ?? 0) + 1;
+      }
+    }
+    return map;
+  });
+
+  /** Maps linkedAccountId → transaction count for CC Payment envelopes. */
+  protected readonly ccTxnCountMap = computed(() => {
+    const map: Record<string, number> = {};
+    for (const t of this.dashboardState.transactions()) {
+      if (t.bankAccountId) {
+        map[t.bankAccountId] = (map[t.bankAccountId] ?? 0) + 1;
       }
     }
     return map;
@@ -1134,8 +1231,38 @@ export class Envelopes implements OnInit {
     return this.remainingForEnvelope(envelope.id!) < 0;
   }
 
-  txnCountForEnvelope(envelopeId: string): number {
-    return this.txnCountMap()[envelopeId] ?? 0;
+  /** Get the linked credit card's current balance (debt) for a CC Payment envelope. */
+  cardBalanceForEnvelope(envelope: EnvelopeDTO): number {
+    if (!envelope.linkedAccountId) return 0;
+    const card = this.dashboardState.creditCards().find(c => c.id === envelope.linkedAccountId);
+    return card?.currentBalance ?? 0;
+  }
+
+  /** Coverage percent: how much of the card's debt is covered by the all-time allocation. */
+  ccCoveragePercent(envelope: EnvelopeDTO): number {
+    const debt = this.cardBalanceForEnvelope(envelope);
+    if (debt <= 0) return 100;
+    const allocated = envelope.allocatedBalance ?? 0;
+    return Math.max(0, Math.min(100, Math.round((allocated / debt) * 100)));
+  }
+
+  /** Total credit card debt across all CC Payment envelopes in a category. */
+  ccCategoryTotalDebt(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + this.cardBalanceForEnvelope(e), 0);
+  }
+
+  /** Total funded (all-time allocatedBalance) across all CC Payment envelopes in a category. */
+  ccCategoryTotalFunded(categoryId: string): number {
+    return this.envelopesForCategory(categoryId)
+      .reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0);
+  }
+
+  txnCountForEnvelope(envelope: EnvelopeDTO): number {
+    if (envelope.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId) {
+      return this.ccTxnCountMap()[envelope.linkedAccountId] ?? 0;
+    }
+    return this.txnCountMap()[envelope.id!] ?? 0;
   }
 
   ngOnInit(): void {
@@ -1278,7 +1405,7 @@ export class Envelopes implements OnInit {
     const input = event.target as HTMLInputElement;
     const newBalance = parseFloat(input.value);
     const currentAllocation = this.monthlyAllocationForEnvelope(envelope.id!);
-    if (isNaN(newBalance) || newBalance < 0 || newBalance === currentAllocation) {
+    if (isNaN(newBalance) || newBalance === currentAllocation) {
       input.value = String(currentAllocation);
       return;
     }
@@ -1387,17 +1514,31 @@ export class Envelopes implements OnInit {
 
   onPreviewSelectTransaction(txn: TransactionDTO): void {
     const envelopeId = this.activePreviewId();
+    const envelope = this.dashboardState.envelopes().find(e => e.id === envelopeId);
     this.closePreview();
-    this.router.navigate(['/dashboard/transactions'], {
-      queryParams: { envelopeId, highlightId: txn.id },
-    });
+    if (envelope?.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId) {
+      this.router.navigate(['/dashboard/transactions'], {
+        queryParams: { accountId: envelope.linkedAccountId, highlightId: txn.id },
+      });
+    } else {
+      this.router.navigate(['/dashboard/transactions'], {
+        queryParams: { envelopeId, highlightId: txn.id },
+      });
+    }
   }
 
   onPreviewViewAll(): void {
     const id = this.activePreviewId();
+    const envelope = this.dashboardState.envelopes().find(e => e.id === id);
     this.closePreview();
-    this.router.navigate(['/dashboard/transactions'], {
-      queryParams: { envelopeId: id },
-    });
+    if (envelope?.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId) {
+      this.router.navigate(['/dashboard/transactions'], {
+        queryParams: { accountId: envelope.linkedAccountId },
+      });
+    } else {
+      this.router.navigate(['/dashboard/transactions'], {
+        queryParams: { envelopeId: id },
+      });
+    }
   }
 }
