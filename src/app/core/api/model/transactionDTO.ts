@@ -20,5 +20,9 @@ export interface TransactionDTO {
     transactionType?: string;
     linkedTransactionId?: string;
     createdAt?: string;
+    pending?: boolean;
+    merchantName?: string;
+    plaidCategory?: string;
+    plaidTransactionId?: string;
 }
 

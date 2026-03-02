@@ -284,7 +284,7 @@ export class ReconcileBalanceDialog {
 
     const targetBalance = this.form.value.targetBalance!;
 
-    this.bankAccountApi.reconcileBankAccount(this.data.account.id!, targetBalance).subscribe({
+    this.bankAccountApi.reconcileBankAccount(this.data.account.id!, { targetBalance }).subscribe({
       next: (updated) => {
         this.loading.set(false);
         this.dashboardState.updateAccount(updated.id!, updated);

@@ -16,3 +16,4 @@ export interface CCPaymentRequest {
     description?: string;
     transactionDate: string;
 }
+

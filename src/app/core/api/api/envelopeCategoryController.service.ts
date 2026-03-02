@@ -62,8 +62,11 @@ export class EnvelopeCategoryControllerService extends BaseService {
         }
 
         const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
         const localVarTransferCache: boolean = options?.transferCache ?? true;
 
+
+        // to determine the Content-Type header
         const consumes: string[] = [
             'application/json'
         ];
@@ -123,7 +126,9 @@ export class EnvelopeCategoryControllerService extends BaseService {
         }
 
         const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
         const localVarTransferCache: boolean = options?.transferCache ?? true;
+
 
         let responseType_: 'text' | 'json' | 'blob' = 'json';
         if (localVarHttpHeaderAcceptSelected) {
@@ -174,6 +179,7 @@ export class EnvelopeCategoryControllerService extends BaseService {
             true,
         );
 
+
         let localVarHeaders = this.defaultHeaders;
 
         const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
@@ -184,7 +190,9 @@ export class EnvelopeCategoryControllerService extends BaseService {
         }
 
         const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
         const localVarTransferCache: boolean = options?.transferCache ?? true;
+
 
         let responseType_: 'text' | 'json' | 'blob' = 'json';
         if (localVarHttpHeaderAcceptSelected) {
@@ -238,7 +246,9 @@ export class EnvelopeCategoryControllerService extends BaseService {
         }
 
         const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
         const localVarTransferCache: boolean = options?.transferCache ?? true;
+
 
         let responseType_: 'text' | 'json' | 'blob' = 'json';
         if (localVarHttpHeaderAcceptSelected) {
@@ -295,8 +305,11 @@ export class EnvelopeCategoryControllerService extends BaseService {
         }
 
         const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
         const localVarTransferCache: boolean = options?.transferCache ?? true;
 
+
+        // to determine the Content-Type header
         const consumes: string[] = [
             'application/json'
         ];
