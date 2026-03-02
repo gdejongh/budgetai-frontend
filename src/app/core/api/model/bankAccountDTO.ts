@@ -16,5 +16,10 @@ export interface BankAccountDTO {
     accountType?: string;
     currentBalance: number;
     createdAt?: string;
+    plaidAccountId?: string;
+    plaidItemId?: string;
+    accountMask?: string;
+    manual?: boolean;
+    institutionName?: string;
 }
 

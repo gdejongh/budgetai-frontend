@@ -1,8 +1,9 @@
 import { HttpHandlerFn, HttpInterceptorFn, HttpRequest, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, switchMap, throwError } from 'rxjs';
+import { Observable, catchError, finalize, shareReplay, switchMap, throwError } from 'rxjs';
 
+import { AuthResponseDTO } from '../api';
 import { AuthService } from './auth.service';
 
 const PUBLIC_URLS = [
@@ -21,6 +22,8 @@ function isPublicUrl(url: string, method: string): boolean {
   return false;
 }
 
+let refreshInProgress$: Observable<AuthResponseDTO> | null = null;
+
 export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
   const authService = inject(AuthService);
   const router = inject(Router);
@@ -37,7 +40,14 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
   return next(authedReq).pipe(
     catchError((error: HttpErrorResponse) => {
       if ((error.status === 401 || error.status === 403) && token && !req.url.includes('/api/auth/refresh')) {
-        return authService.refresh().pipe(
+        if (!refreshInProgress$) {
+          refreshInProgress$ = authService.refresh().pipe(
+            shareReplay(1),
+            finalize(() => { refreshInProgress$ = null; })
+          );
+        }
+
+        return refreshInProgress$.pipe(
           switchMap(response => {
             if (response.accessToken) {
               const retryReq = req.clone({

@@ -12,3 +12,4 @@
 export interface CreateEnvelopeCategoryRequest { 
     name: string;
 }
+

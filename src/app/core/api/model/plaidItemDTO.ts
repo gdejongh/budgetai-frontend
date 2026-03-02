@@ -7,13 +7,16 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { BankAccountDTO } from './bankAccountDTO';
 
 
-export interface EnvelopeCategoryDTO { 
+export interface PlaidItemDTO { 
     id?: string;
-    appUserId: string;
-    name: string;
-    categoryType?: string;
+    institutionId?: string;
+    institutionName?: string;
+    status?: string;
+    lastSyncedAt?: string;
     createdAt?: string;
+    accounts?: Array<BankAccountDTO>;
 }
 

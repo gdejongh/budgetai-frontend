@@ -1388,7 +1388,9 @@ export class Envelopes implements OnInit {
   protected readonly spentMap = computed(() => {
     const map: Record<string, number> = {};
     for (const s of this.dashboardState.spentSummaries()) {
-      map[s.envelopeId] = Math.abs(s.periodSpent);
+      if (s.envelopeId) {
+        map[s.envelopeId] = Math.abs(s.periodSpent ?? 0);
+      }
     }
     return map;
   });
@@ -1397,7 +1399,9 @@ export class Envelopes implements OnInit {
   protected readonly totalSpentMap = computed(() => {
     const map: Record<string, number> = {};
     for (const s of this.dashboardState.spentSummaries()) {
-      map[s.envelopeId] = Math.abs(s.totalSpent);
+      if (s.envelopeId) {
+        map[s.envelopeId] = Math.abs(s.totalSpent ?? 0);
+      }
     }
     return map;
   });
@@ -1406,7 +1410,9 @@ export class Envelopes implements OnInit {
   protected readonly monthlyAllocationMap = computed(() => {
     const map: Record<string, number> = {};
     for (const a of this.dashboardState.monthlyAllocations()) {
-      map[a.envelopeId] = a.amount;
+      if (a.envelopeId) {
+        map[a.envelopeId] = a.amount ?? 0;
+      }
     }
     return map;
   });

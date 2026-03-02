@@ -9,9 +9,11 @@
  */
 
 
-export interface EnvelopeAllocationDTO { 
-    envelopeId?: string;
-    yearMonth?: string;
-    amount?: number;
+export interface PlaidAccountLink { 
+    plaidAccountId: string;
+    existingBankAccountId?: string;
+    accountName?: string;
+    accountType?: string;
+    mask?: string;
 }
 
