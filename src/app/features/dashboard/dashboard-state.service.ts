@@ -85,9 +85,13 @@ export class DashboardStateService {
       .reduce((sum, t) => sum + t.amount, 0)
   );
 
-  readonly unallocatedAmount = computed(() =>
-    this.totalBankBalance() - this.totalEnvelopeAllocation() - this.totalAllTimeEnvelopeSpent()
-  );
+  readonly unallocatedAmount = computed(() => {
+    // Use cash-only balance (checking + savings) — not net worth (which subtracts CC debt).
+    // CC debt coverage is already represented by the CC Payment envelope allocations
+    // included in totalEnvelopeAllocation, so subtracting CC debt here would double-count.
+    const totalCash = this.bankAccounts().reduce((sum, a) => sum + (a.currentBalance ?? 0), 0);
+    return totalCash - this.totalEnvelopeAllocation() - this.totalAllTimeEnvelopeSpent();
+  });
 
   readonly accountCount = computed(() => this.accounts().length);
   readonly envelopeCount = computed(() => this.envelopes().length);
@@ -267,6 +271,21 @@ export class DashboardStateService {
     // CC balance inversion: a purchase (negative amount) increases CC debt (positive balance)
     const balanceChange = isCreditCard ? -transaction.amount : transaction.amount;
     this.adjustAccountBalance(transaction.bankAccountId, balanceChange);
+
+    // Optimistic CC Payment envelope auto-move
+    if (isCreditCard && transaction.envelopeId) {
+      const ccPaymentEnv = this.ccPaymentEnvelopes().get(transaction.bankAccountId);
+      if (ccPaymentEnv?.id) {
+        if (transaction.amount < 0) {
+          // CC purchase: increase CC Payment envelope allocation by |amount|
+          this.adjustEnvelopeAllocation(ccPaymentEnv.id, Math.abs(transaction.amount));
+        } else if (transaction.amount > 0) {
+          // CC refund: decrease CC Payment envelope allocation
+          this.adjustEnvelopeAllocation(ccPaymentEnv.id, -transaction.amount);
+        }
+      }
+    }
+
     this.loadSpentSummaries();
   }
 
@@ -293,6 +312,20 @@ export class DashboardStateService {
         const account = this.accounts().find(a => a.id === transaction.bankAccountId);
         const isCreditCard = account?.accountType === 'CREDIT_CARD';
         this.adjustAccountBalance(transaction.bankAccountId, isCreditCard ? transaction.amount : -transaction.amount);
+
+        // Reverse optimistic CC Payment envelope auto-move
+        if (isCreditCard && transaction.envelopeId && transaction.transactionType !== 'CC_PAYMENT') {
+          const ccPaymentEnv = this.ccPaymentEnvelopes().get(transaction.bankAccountId);
+          if (ccPaymentEnv?.id) {
+            if (transaction.amount < 0) {
+              // Deleting a CC purchase: decrease CC Payment envelope allocation
+              this.adjustEnvelopeAllocation(ccPaymentEnv.id, -Math.abs(transaction.amount));
+            } else if (transaction.amount > 0) {
+              // Deleting a CC refund: increase CC Payment envelope allocation
+              this.adjustEnvelopeAllocation(ccPaymentEnv.id, transaction.amount);
+            }
+          }
+        }
       }
     } else {
       this.transactions.update(current => current.filter(t => t.id !== id));
@@ -326,12 +359,43 @@ export class DashboardStateService {
       }
     }
 
+    // --- CC Payment envelope auto-move adjustments on update ---
+    // Reverse old auto-move for CC purchases
+    if (oldIsCreditCard && oldTxn.envelopeId && oldAmount < 0) {
+      const ccPaymentEnv = this.ccPaymentEnvelopes().get(oldAccountId);
+      if (ccPaymentEnv?.id) {
+        this.adjustEnvelopeAllocation(ccPaymentEnv.id, -Math.abs(oldAmount));
+      }
+    }
+    // Reverse old refund-move
+    if (oldIsCreditCard && oldTxn.envelopeId && oldAmount > 0) {
+      const ccPaymentEnv = this.ccPaymentEnvelopes().get(oldAccountId);
+      if (ccPaymentEnv?.id) {
+        this.adjustEnvelopeAllocation(ccPaymentEnv.id, oldAmount);
+      }
+    }
+    // Apply new auto-move for CC purchases
+    if (newIsCreditCard && newTxn.envelopeId && newAmount < 0) {
+      const ccPaymentEnv = this.ccPaymentEnvelopes().get(newAccountId);
+      if (ccPaymentEnv?.id) {
+        this.adjustEnvelopeAllocation(ccPaymentEnv.id, Math.abs(newAmount));
+      }
+    }
+    // Apply new refund-move
+    if (newIsCreditCard && newTxn.envelopeId && newAmount > 0) {
+      const ccPaymentEnv = this.ccPaymentEnvelopes().get(newAccountId);
+      if (ccPaymentEnv?.id) {
+        this.adjustEnvelopeAllocation(ccPaymentEnv.id, -newAmount);
+      }
+    }
+
     this.loadSpentSummaries();
   }
 
   /**
    * Optimistically update state after a CC payment.
-   * Adds both the bank-side and CC-side transactions, adjusts both balances.
+   * Adds both the bank-side and CC-side transactions, adjusts both balances,
+   * and decreases the CC Payment envelope allocation.
    */
   addCCPayment(bankTransaction: TransactionDTO, ccTransaction: TransactionDTO): void {
     this.transactions.update(current => [bankTransaction, ccTransaction, ...current]);
@@ -340,6 +404,13 @@ export class DashboardStateService {
     // CC side: positive amount (from backend) decreases CC debt
     // Since CC balance is stored as positive = debt, a positive CC_PAYMENT amount reduces debt
     this.adjustAccountBalance(ccTransaction.bankAccountId, -ccTransaction.amount);
+
+    // Decrease CC Payment envelope allocation by the payment amount
+    const ccPaymentEnv = this.ccPaymentEnvelopes().get(ccTransaction.bankAccountId);
+    if (ccPaymentEnv?.id) {
+      this.adjustEnvelopeAllocation(ccPaymentEnv.id, -ccTransaction.amount);
+    }
+
     this.loadSpentSummaries();
   }
 
@@ -355,6 +426,20 @@ export class DashboardStateService {
         a.id === accountId
           ? { ...a, currentBalance: (a.currentBalance ?? 0) + amount }
           : a
+      )
+    );
+  }
+
+  /**
+   * Optimistically adjust a CC Payment envelope's allocatedBalance.
+   * Used to reflect auto-move/refund-move changes without waiting for server refresh.
+   */
+  private adjustEnvelopeAllocation(envelopeId: string, amount: number): void {
+    this.envelopes.update(current =>
+      current.map(e =>
+        e.id === envelopeId
+          ? { ...e, allocatedBalance: (e.allocatedBalance ?? 0) + amount }
+          : e
       )
     );
   }

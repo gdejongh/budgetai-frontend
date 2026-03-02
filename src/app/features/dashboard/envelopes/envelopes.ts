@@ -181,7 +181,7 @@ import {
                     @for (envelope of envelopesForCategory(category.id!); track envelope.id) {
                       <div
                         class="envelope-card glass-card neon-border"
-                        [class.envelope-negative]="remainingForEnvelope(envelope.id!) < 0"
+                        [class.envelope-negative]="isEnvelopeUnhealthy(envelope)"
                         [class.cc-payment-envelope]="envelope.envelopeType === 'CC_PAYMENT'"
                       >
                         <div class="card-header">
@@ -191,8 +191,8 @@ import {
                           @if (envelope.envelopeType === 'CC_PAYMENT') {
                             <span class="envelope-type-badge cc-payment-badge">CC Payment</span>
                           }
-                          @if (remainingForEnvelope(envelope.id!) < 0) {
-                            <span class="envelope-type-badge overspent-badge">Overspent</span>
+                          @if (isEnvelopeUnhealthy(envelope)) {
+                            <span class="envelope-type-badge overspent-badge">{{ envelope.envelopeType === 'CC_PAYMENT' ? 'Underfunded' : 'Overspent' }}</span>
                           }
                           @if (envelope.envelopeType !== 'CC_PAYMENT') {
                             <button mat-icon-button
@@ -220,14 +220,14 @@ import {
                             <div class="finance-row remaining-row" style="margin-bottom: 0.5rem;">
                               <span class="finance-label" style="font-size:1rem;font-weight:700;">Remaining</span>
                               <span class="finance-value remaining-value"
-                                    [class.remaining-positive]="remainingForEnvelope(envelope.id!) >= 0"
-                                    [class.remaining-negative]="remainingForEnvelope(envelope.id!) < 0"
+                                    [class.remaining-positive]="!isEnvelopeUnhealthy(envelope)"
+                                    [class.remaining-negative]="isEnvelopeUnhealthy(envelope)"
                                     style="font-size:1.35rem;font-weight:900;display:flex;align-items:center;gap:0.4rem;"
                                     aria-live="polite"
                                     [attr.aria-label]="'Remaining: ' + (remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2')">
                                 {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
-                                @if (remainingForEnvelope(envelope.id!) < 0) {
-                                  <mat-icon class="remaining-warning" aria-label="Overspent">warning_amber</mat-icon>
+                                @if (isEnvelopeUnhealthy(envelope)) {
+                                  <mat-icon class="remaining-warning" [attr.aria-label]="envelope.envelopeType === 'CC_PAYMENT' ? 'Underfunded' : 'Overspent'">warning_amber</mat-icon>
                                 }
                               </span>
                             </div>
@@ -238,8 +238,8 @@ import {
                               <div class="progress-track">
                                 <div class="progress-fill"
                                      [style.width]="percentRemaining(envelope) + '%'"
-                                     [class.negative]="remainingForEnvelope(envelope.id!) < 0"
-                                     [class.low]="remainingForEnvelope(envelope.id!) <= envelope.allocatedBalance * 0.1"
+                                     [class.negative]="isEnvelopeUnhealthy(envelope)"
+                                     [class.low]="!isEnvelopeUnhealthy(envelope) && remainingForEnvelope(envelope.id!) <= envelope.allocatedBalance * 0.1"
                                 ></div>
                               </div>
                             </div>
@@ -1118,6 +1118,20 @@ export class Envelopes implements OnInit {
 
   remainingForEnvelope(envelopeId: string): number {
     return this.remainingMap()[envelopeId] ?? 0;
+  }
+
+  /**
+   * For CC Payment envelopes, health is based on whether the allocation
+   * covers the linked card's debt (YNAB model), not generic remaining.
+   */
+  isEnvelopeUnhealthy(envelope: EnvelopeDTO): boolean {
+    if (envelope.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId) {
+      const card = this.dashboardState.creditCards().find(c => c.id === envelope.linkedAccountId);
+      const debt = card?.currentBalance ?? 0;
+      const allocated = envelope.allocatedBalance ?? 0;
+      return debt > allocated;
+    }
+    return this.remainingForEnvelope(envelope.id!) < 0;
   }
 
   txnCountForEnvelope(envelopeId: string): number {
