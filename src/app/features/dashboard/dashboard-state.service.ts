@@ -75,8 +75,18 @@ export class DashboardStateService {
     this.envelopes().reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0)
   );
 
+  /**
+   * Sum of all transaction amounts that are assigned to an envelope.
+   * Withdrawals are negative, so this value is typically <= 0.
+   */
+  readonly totalAllTimeEnvelopeSpent = computed(() =>
+    this.transactions()
+      .filter(t => !!t.envelopeId)
+      .reduce((sum, t) => sum + t.amount, 0)
+  );
+
   readonly unallocatedAmount = computed(() =>
-    this.totalBankBalance() - this.totalEnvelopeAllocation()
+    this.totalBankBalance() - this.totalEnvelopeAllocation() - this.totalAllTimeEnvelopeSpent()
   );
 
   readonly accountCount = computed(() => this.accounts().length);

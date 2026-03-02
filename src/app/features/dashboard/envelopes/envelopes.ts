@@ -1078,6 +1078,15 @@ export class Envelopes implements OnInit {
     return map;
   });
 
+  /** Maps envelopeId → all-time spent amount (positive value) */
+  protected readonly totalSpentMap = computed(() => {
+    const map: Record<string, number> = {};
+    for (const s of this.dashboardState.spentSummaries()) {
+      map[s.envelopeId] = Math.abs(s.totalSpent);
+    }
+    return map;
+  });
+
   /** Maps envelopeId → monthly allocation amount for the viewed month */
   protected readonly monthlyAllocationMap = computed(() => {
     const map: Record<string, number> = {};
@@ -1087,14 +1096,13 @@ export class Envelopes implements OnInit {
     return map;
   });
 
-  /** Maps envelopeId → remaining for the viewed month (monthly allocation − monthly spent) */
+  /** Maps envelopeId → remaining (cumulative allocations − all-time spent) */
   protected readonly remainingMap = computed(() => {
-    const allocations = this.monthlyAllocationMap();
-    const spent = this.spentMap();
+    const totalSpent = this.totalSpentMap();
     const map: Record<string, number> = {};
     for (const e of this.dashboardState.envelopes()) {
       if (e.id) {
-        map[e.id] = (allocations[e.id] ?? 0) - (spent[e.id] ?? 0);
+        map[e.id] = (e.allocatedBalance ?? 0) - (totalSpent[e.id] ?? 0);
       }
     }
     return map;
@@ -1165,6 +1173,9 @@ export class Envelopes implements OnInit {
     dialogRef.afterClosed().subscribe((result) => {
       if (result) {
         this.dashboardState.addEnvelope(result);
+        if (result.id && result.allocatedBalance) {
+          this.dashboardState.updateMonthlyAllocation(result.id, result.allocatedBalance);
+        }
       }
     });
   }
