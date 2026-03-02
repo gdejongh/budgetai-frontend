@@ -17,6 +17,10 @@ export interface EnvelopeDTO {
     allocatedBalance: number;
     envelopeType?: string;
     linkedAccountId?: string;
+    goalAmount?: number;
+    monthlyGoalTarget?: number;
+    goalTargetDate?: string;
+    goalType?: string;
     createdAt?: string;
 }
 

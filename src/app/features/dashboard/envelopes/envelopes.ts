@@ -25,6 +25,7 @@ import { TransactionDTO } from '../../../core/api/model/transactionDTO';
 import { DashboardStateService } from '../dashboard-state.service';
 import { CreateEnvelopeDialog, CreateEnvelopeDialogData } from './create-envelope-dialog';
 import { CreateCategoryDialog } from './create-category-dialog';
+import { SavingsGoalDialog, SavingsGoalDialogData } from './savings-goal-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
@@ -217,12 +218,20 @@ import {
                             <span class="envelope-type-badge overspent-badge">{{ envelope.envelopeType === 'CC_PAYMENT' ? 'Underfunded' : 'Overspent' }}</span>
                           }
                           @if (envelope.envelopeType !== 'CC_PAYMENT') {
-                            <button mat-icon-button
-                                    class="delete-btn"
-                                    (click)="deleteEnvelope(envelope.id!)"
-                                    [attr.aria-label]="'Delete envelope ' + envelope.name">
-                              <mat-icon>delete_outline</mat-icon>
-                            </button>
+                            <div class="card-header-actions">
+                              <button mat-icon-button
+                                      class="goal-btn"
+                                      (click)="openSavingsGoalDialog(envelope)"
+                                      [attr.aria-label]="envelope.goalType ? 'Edit savings goal for ' + envelope.name : 'Set savings goal for ' + envelope.name">
+                                <mat-icon>{{ envelope.goalType ? 'flag' : 'outlined_flag' }}</mat-icon>
+                              </button>
+                              <button mat-icon-button
+                                      class="delete-btn"
+                                      (click)="deleteEnvelope(envelope.id!)"
+                                      [attr.aria-label]="'Delete envelope ' + envelope.name">
+                                <mat-icon>delete_outline</mat-icon>
+                              </button>
+                            </div>
                           }
                         </div>
 
@@ -339,6 +348,60 @@ import {
                               <span class="finance-value spent-value">{{ spentForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}</span>
                             </div>
                           </div>
+
+                          @if (envelope.goalType) {
+                            <div class="goal-section" @slideInUp>
+                              <div class="goal-header">
+                                <mat-icon class="goal-icon">{{ envelope.goalType === 'MONTHLY' ? 'repeat' : 'flag' }}</mat-icon>
+                                <span class="goal-label">{{ envelope.goalType === 'MONTHLY' ? 'Monthly Goal' : 'Savings Target' }}</span>
+                                <button mat-icon-button
+                                        class="goal-edit-btn"
+                                        (click)="openSavingsGoalDialog(envelope)"
+                                        [attr.aria-label]="'Edit savings goal for ' + envelope.name">
+                                  <mat-icon>edit</mat-icon>
+                                </button>
+                              </div>
+
+                              @if (envelope.goalType === 'MONTHLY') {
+                                <!-- Monthly Goal: just the monthly check -->
+                                <div class="goal-monthly-check">
+                                  <mat-icon [class.met]="isMonthlyGoalMet(envelope)" [class.unmet]="!isMonthlyGoalMet(envelope)">
+                                    {{ isMonthlyGoalMet(envelope) ? 'check_circle' : 'radio_button_unchecked' }}
+                                  </mat-icon>
+                                  <span>
+                                    {{ monthlyNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}
+                                    / {{ envelope.monthlyGoalTarget | currency:'USD':'symbol':'1.2-2' }}
+                                    <span class="goal-period">this month</span>
+                                  </span>
+                                </div>
+                              } @else {
+                                <!-- Target Goal: progress bar + computed monthly -->
+                                <div class="goal-progress-bar" role="progressbar"
+                                     [attr.aria-valuenow]="goalProgressPercent(envelope)"
+                                     aria-valuemin="0" aria-valuemax="100"
+                                     [attr.aria-label]="'Savings goal progress: ' + goalProgressPercent(envelope) + '%'">
+                                  <div class="progress-track">
+                                    <div class="progress-fill goal-fill"
+                                         [style.width]="goalProgressPercent(envelope) + '%'"
+                                    ></div>
+                                  </div>
+                                </div>
+                                <div class="goal-stats">
+                                  <span class="goal-saved">{{ goalNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}</span>
+                                  <span class="goal-of">of</span>
+                                  <span class="goal-target">{{ envelope.goalAmount | currency:'USD':'symbol':'1.2-2' }}</span>
+                                </div>
+                                <div class="goal-target-info">
+                                  <mat-icon>schedule</mat-icon>
+                                  <span>
+                                    {{ computedMonthlyForTarget(envelope) | currency:'USD':'symbol':'1.2-2' }}/mo
+                                    &middot;
+                                    {{ monthsUntilTargetDate(envelope) }} months left
+                                  </span>
+                                </div>
+                              }
+                            </div>
+                          }
                         }
 
                         @if (envelope.createdAt) {
@@ -1087,6 +1150,154 @@ import {
       gap: 0.75rem;
       justify-content: center;
     }
+
+    /* ── Goal Section Styles ─────────────────────────── */
+
+    .card-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .goal-btn {
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity var(--transition-fast), color var(--transition-fast);
+
+      .envelope-card:hover & {
+        opacity: 1;
+      }
+
+      &:hover {
+        color: var(--accent-secondary, #818cf8);
+      }
+    }
+
+    .goal-section {
+      margin-top: 0.5rem;
+      padding: 0.75rem;
+      border-radius: var(--radius-sm);
+      background: rgba(129, 140, 248, 0.04);
+      border: 1px solid rgba(129, 140, 248, 0.12);
+    }
+
+    .goal-header {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .goal-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: var(--accent-secondary, #818cf8);
+    }
+
+    .goal-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent-secondary, #818cf8);
+    }
+
+    .goal-edit-btn {
+      margin-left: auto;
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+      }
+
+      &:hover mat-icon {
+        color: var(--accent-secondary, #818cf8);
+      }
+    }
+
+    .goal-progress-bar {
+      width: 100%;
+      height: 6px;
+      margin-bottom: 0.5rem;
+      background: transparent;
+      border-radius: 4px;
+    }
+
+    .goal-fill {
+      background: linear-gradient(90deg, var(--accent-secondary, #818cf8), #a78bfa);
+    }
+
+    .goal-stats {
+      display: flex;
+      align-items: baseline;
+      gap: 0.3rem;
+      font-size: 0.85rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .goal-saved {
+      font-weight: 700;
+      color: var(--accent-secondary, #818cf8);
+    }
+
+    .goal-of {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .goal-target {
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .goal-monthly-check {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      mat-icon.met {
+        color: var(--success, #22c55e);
+      }
+
+      mat-icon.unmet {
+        color: var(--text-muted);
+      }
+    }
+
+    .goal-period {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+    }
+
+    .goal-target-info {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: var(--accent-secondary, #818cf8);
+      }
+    }
   `,
 })
 export class Envelopes implements OnInit {
@@ -1265,6 +1476,58 @@ export class Envelopes implements OnInit {
     return this.txnCountMap()[envelope.id!] ?? 0;
   }
 
+  // ── Savings Goal Helpers ──────────────────────────────────────
+
+  /** Net saved toward a goal = total allocations - total all-time spent */
+  goalNetSaved(envelope: EnvelopeDTO): number {
+    const totalAllocated = envelope.allocatedBalance ?? 0;
+    const totalSpent = this.totalSpentMap()[envelope.id!] ?? 0;
+    return Math.max(0, totalAllocated - totalSpent);
+  }
+
+  /** Goal progress as a percentage (0-100) */
+  goalProgressPercent(envelope: EnvelopeDTO): number {
+    const goal = envelope.goalAmount;
+    if (!goal || goal <= 0) return 0;
+    const saved = this.goalNetSaved(envelope);
+    return Math.max(0, Math.min(100, Math.round((saved / goal) * 100)));
+  }
+
+  /** Net saved this month = monthly allocation - monthly spent */
+  monthlyNetSaved(envelope: EnvelopeDTO): number {
+    const allocation = this.monthlyAllocationForEnvelope(envelope.id!);
+    const spent = this.spentForEnvelope(envelope.id!);
+    return Math.max(0, allocation - spent);
+  }
+
+  /** Whether the monthly net saved meets or exceeds the monthly goal target */
+  isMonthlyGoalMet(envelope: EnvelopeDTO): boolean {
+    if (envelope.goalType === 'TARGET') {
+      const monthly = this.computedMonthlyForTarget(envelope);
+      return this.monthlyNetSaved(envelope) >= monthly;
+    }
+    if (!envelope.monthlyGoalTarget || envelope.monthlyGoalTarget <= 0) return false;
+    return this.monthlyNetSaved(envelope) >= envelope.monthlyGoalTarget;
+  }
+
+  /** Months remaining until the target date for a TARGET goal */
+  monthsUntilTargetDate(envelope: EnvelopeDTO): number {
+    if (!envelope.goalTargetDate) return 0;
+    const target = new Date(envelope.goalTargetDate + 'T00:00:00');
+    const now = new Date();
+    const months = (target.getFullYear() - now.getFullYear()) * 12
+      + (target.getMonth() - now.getMonth());
+    return Math.max(1, months);
+  }
+
+  /** Computed monthly savings needed for a TARGET goal */
+  computedMonthlyForTarget(envelope: EnvelopeDTO): number {
+    const goal = envelope.goalAmount;
+    const months = this.monthsUntilTargetDate(envelope);
+    if (!goal || goal <= 0 || months <= 0) return 0;
+    return Math.ceil((goal / months) * 100) / 100;
+  }
+
   ngOnInit(): void {
     if (this.dashboardState.envelopes().length === 0 && !this.dashboardState.loading()) {
       this.dashboardState.refresh();
@@ -1317,6 +1580,20 @@ export class Envelopes implements OnInit {
         if (result.id && result.allocatedBalance) {
           this.dashboardState.updateMonthlyAllocation(result.id, result.allocatedBalance);
         }
+      }
+    });
+  }
+
+  openSavingsGoalDialog(envelope: EnvelopeDTO): void {
+    const dialogRef = this.dialog.open(SavingsGoalDialog, {
+      width: '460px',
+      panelClass: 'dark-dialog',
+      data: { envelope } as SavingsGoalDialogData,
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        this.dashboardState.updateEnvelope(envelope.id!, result);
       }
     });
   }
