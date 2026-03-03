@@ -1117,6 +1117,10 @@ export class Accounts implements OnInit {
         if (original.currentBalance !== updated.currentBalance) {
           this.dashboardState.loadTransactions();
         }
+        // Refresh envelopes so the CC_PAYMENT envelope name stays in sync
+        if (original.name !== updated.name && saved.accountType === 'CREDIT_CARD') {
+          this.dashboardState.loadEnvelopes();
+        }
       },
       error: () => {
         // Revert on failure
