@@ -11,6 +11,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { DashboardStateService } from '../dashboard-state.service';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
+import { AiInsightsCard } from './ai-insights-card';
 import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animations/route-animations';
 
 @Component({
@@ -22,6 +23,7 @@ import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animation
     MatButtonModule,
     Counter,
     SkeletonCard,
+    AiInsightsCard,
   ],
   animations: [staggerFadeIn, slideInUp, scaleBounce],
   template: `
@@ -92,6 +94,10 @@ import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animation
             </div>
           </div>
       </div>
+
+      @if (state.accountCount() > 0) {
+        <app-ai-insights-card />
+      }
 
       @if (state.accountCount() === 0) {
         <div class="empty-state glass-card" @scaleBounce>
