@@ -17,7 +17,7 @@
       </a>
       <a mat-list-item routerLink="/dashboard/accounts" routerLinkActive="active-link">
         <mat-icon matListItemIcon>account_balance</mat-icon>
-        <span matListItemTitle>Bank Accounts</span>
+        <span matListItemTitle>Accounts</span>
       </a>
       <a mat-list-item routerLink="/dashboard/envelopes" routerLinkActive="active-link">
         <mat-icon matListItemIcon>mail</mat-icon>
@@ -70,5 +70,10 @@
       }
       <router-outlet />
     </main>
+
+    <footer class="app-footer">
+      <span>&copy; 2026 BudgetAI</span>
+      <span class="disclaimer">This is a personal project for demonstration purposes only and does not constitute financial advice.</span>
+    </footer>
   </mat-sidenav-content>
 </mat-sidenav-container>

@@ -105,7 +105,6 @@ import { staggerFadeIn, slideInUp, scaleBounce } from '../../../shared/animation
           <h2>Welcome to BudgetAI</h2>
           <p>Get started by adding your bank accounts and setting up envelopes to organize your budget.</p>
           <a mat-flat-button color="primary" routerLink="/dashboard/accounts" class="cta-btn">
-            <mat-icon>add</mat-icon>
             Add Your First Account
           </a>
         </div>

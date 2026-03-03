@@ -52,8 +52,8 @@ import {
     <div class="page-header" @slideInUp>
       <div class="header-row">
         <div>
-          <h1>Bank Accounts</h1>
-          <p>Manage your linked bank accounts</p>
+          <h1>Accounts</h1>
+          <p>Manage your linked bank accounts and credit cards</p>
         </div>
         @if (!dashboardState.loading() && dashboardState.accounts().length > 0) {
           <div class="header-actions">
@@ -92,202 +92,286 @@ import {
           <button mat-flat-button color="primary" class="add-first-btn" (click)="connectBank()" [disabled]="connectingBank()">
             @if (connectingBank()) {
               <mat-icon class="spin-icon">sync</mat-icon>
-            } @else {
-              <mat-icon>link</mat-icon>
             }
             Connect Your Bank
           </button>
           <button mat-stroked-button class="add-manual-btn" (click)="openCreateDialog()">
-            <mat-icon>edit</mat-icon>
             Add Manually
           </button>
         </div>
       </div>
     } @else {
-      <div class="accounts-grid" @staggerFadeIn>
-        @for (account of dashboardState.accounts(); track account.id) {
-          <div class="account-card glass-card neon-border"
-               [class.credit-card-card]="account.accountType === 'CREDIT_CARD'">
-            <div class="card-header">
-              <div class="card-icon"
-                   [class.cc-icon]="account.accountType === 'CREDIT_CARD'"
-                   [class.savings-icon]="account.accountType === 'SAVINGS'">
-                @switch (account.accountType) {
-                  @case ('CREDIT_CARD') {
-                    <mat-icon>credit_card</mat-icon>
-                  }
-                  @case ('SAVINGS') {
-                    <mat-icon>savings</mat-icon>
-                  }
-                  @default {
-                    <mat-icon>account_balance</mat-icon>
-                  }
+      <!-- Bank Accounts Section -->
+      <section class="account-section">
+        <div class="section-header">
+          <div class="section-title-row">
+            <mat-icon class="section-icon">account_balance</mat-icon>
+            <h2>Bank Accounts</h2>
+          </div>
+          <span class="section-count">{{ bankAccountsList().length }} account{{ bankAccountsList().length !== 1 ? 's' : '' }}</span>
+        </div>
+        @if (bankAccountsList().length === 0) {
+          <div class="section-empty glass-card">
+            <mat-icon>account_balance</mat-icon>
+            <p>No bank accounts yet. Add a checking or savings account to get started.</p>
+          </div>
+        } @else {
+          <div class="accounts-grid" @staggerFadeIn>
+            @for (account of bankAccountsList(); track account.id) {
+              <div class="account-card glass-card neon-border">
+                <div class="card-header">
+                  <div class="card-icon"
+                       [class.savings-icon]="account.accountType === 'SAVINGS'">
+                    @if (account.accountType === 'SAVINGS') {
+                      <mat-icon>savings</mat-icon>
+                    } @else {
+                      <mat-icon>account_balance</mat-icon>
+                    }
+                  </div>
+                  <div class="card-badges">
+                    @if (account.accountType === 'SAVINGS') {
+                      <span class="account-type-badge savings-badge">Savings</span>
+                    }
+                    @if (!account.manual) {
+                      <span class="account-type-badge linked-badge" title="Linked via Plaid">
+                        <mat-icon class="badge-icon">link</mat-icon>
+                        Linked
+                      </span>
+                    }
+                  </div>
+                  <button mat-icon-button class="delete-btn"
+                          (click)="deleteAccount(account.id!)"
+                          [attr.aria-label]="'Delete account ' + account.name">
+                    <mat-icon>delete_outline</mat-icon>
+                  </button>
+                </div>
+
+                <div class="editable-field name-field">
+                  <label class="sr-only" [attr.for]="'acct-name-' + account.id">Account name</label>
+                  <input [id]="'acct-name-' + account.id"
+                         class="inline-input name-input" type="text"
+                         [value]="account.name"
+                         (blur)="onNameBlur($event, account)"
+                         (keydown.enter)="blurTarget($event)"
+                         aria-label="Account name" />
+                </div>
+
+                @if (!account.manual && account.institutionName) {
+                  <span class="institution-label">
+                    {{ account.institutionName }}
+                    @if (account.accountMask) { &bull; ••{{ account.accountMask }} }
+                  </span>
                 }
-              </div>
-              @if (account.accountType === 'CREDIT_CARD') {
-                <span class="account-type-badge cc-badge">Credit Card</span>
-              } @else if (account.accountType === 'SAVINGS') {
-                <span class="account-type-badge savings-badge">Savings</span>
-              }
-              @if (!account.manual) {
-                <span class="account-type-badge linked-badge"
-                      title="Linked via Plaid">
-                  <mat-icon class="badge-icon">link</mat-icon>
-                  Linked
-                </span>
-              }
-              <button mat-icon-button
-                      class="delete-btn"
-                      (click)="deleteAccount(account.id!)"
-                      [attr.aria-label]="'Delete account ' + account.name">
-                <mat-icon>delete_outline</mat-icon>
-              </button>
-            </div>
 
-            <div class="editable-field name-field">
-              <label class="sr-only" [attr.for]="'acct-name-' + account.id">Account name</label>
-              <input [id]="'acct-name-' + account.id"
-                     class="inline-input name-input"
-                     type="text"
-                     [value]="account.name"
-                     (blur)="onNameBlur($event, account)"
-                     (keydown.enter)="blurTarget($event)"
-                     aria-label="Account name" />
-            </div>
-
-            @if (!account.manual && account.institutionName) {
-              <span class="institution-label">
-                {{ account.institutionName }}
-                @if (account.accountMask) {
-                  &bull; ••{{ account.accountMask }}
+                @if (!account.manual) {
+                  <div class="balance-field plaid-balance-display"
+                       [attr.aria-label]="'Current balance (synced)'"
+                       title="Balance is synced from your bank via Plaid">
+                    <span class="currency-prefix">$</span>
+                    <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
+                  </div>
+                } @else {
+                  <div class="editable-field balance-field">
+                    <label class="sr-only" [attr.for]="'acct-balance-' + account.id">Current balance</label>
+                    <span class="currency-prefix">$</span>
+                    <input [id]="'acct-balance-' + account.id"
+                           class="inline-input balance-input" type="number"
+                           step="0.01" min="0"
+                           [value]="account.currentBalance"
+                           (blur)="onBalanceBlur($event, account)"
+                           (keydown.enter)="blurTarget($event)"
+                           aria-label="Current balance" />
+                  </div>
                 }
-              </span>
-            }
 
-            @if (account.accountType === 'CREDIT_CARD') {
-              <div class="balance-field cc-balance-display"
-                   [class.debt-balance]="account.currentBalance > 0"
-                   [attr.aria-label]="'Balance owed'"
-                   title="Credit card balances update from transactions. Use 'Make Payment' or add transactions to adjust.">
-                <span class="currency-prefix">$</span>
-                <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
-              </div>
-            } @else if (!account.manual) {
-              <div class="balance-field plaid-balance-display"
-                   [attr.aria-label]="'Current balance (synced)'"
-                   title="Balance is synced from your bank via Plaid">
-                <span class="currency-prefix">$</span>
-                <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
-              </div>
-            } @else {
-              <div class="editable-field balance-field">
-                <label class="sr-only" [attr.for]="'acct-balance-' + account.id">
-                  Current balance
-                </label>
-                <span class="currency-prefix">$</span>
-                <input [id]="'acct-balance-' + account.id"
-                       class="inline-input balance-input"
-                       type="number"
-                       step="0.01"
-                       min="0"
-                       [value]="account.currentBalance"
-                       (blur)="onBalanceBlur($event, account)"
-                       (keydown.enter)="blurTarget($event)"
-                       aria-label="Current balance" />
-              </div>
-            }
-            @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
-              <span class="debt-label">balance owed</span>
-            }
+                @if (account.createdAt) {
+                  <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
+                }
 
-            @if (getUncoveredDebt(account) > 0) {
-              <button class="uncovered-debt-warning"
-                      (click)="navigateToEnvelopes()"
-                      role="status"
-                      title="Allocate funds to the CC Payment envelope to cover this debt">
-                <mat-icon>warning_amber</mat-icon>
-                <span>{{ getUncoveredDebt(account) | currency:'USD':'symbol':'1.2-2' }} uncovered debt</span>
-                <mat-icon class="link-chevron">chevron_right</mat-icon>
-              </button>
-            }
+                @if (savingId() === account.id) {
+                  <div class="save-indicator" @fadeIn><mat-icon>sync</mat-icon></div>
+                }
 
-            @if (account.createdAt) {
-              <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
-            }
-
-            @if (savingId() === account.id) {
-              <div class="save-indicator" @fadeIn>
-                <mat-icon>sync</mat-icon>
-              </div>
-            }
-
-            <button class="view-txn-link"
-                    cdkOverlayOrigin
-                    #iconOrigin="cdkOverlayOrigin"
-                    (click)="togglePreview(account.id!)"
-                    [attr.aria-label]="'View transactions for ' + account.name">
-              <mat-icon>receipt_long</mat-icon>
-              <span>{{ txnCountForAccount(account.id!) }} transactions</span>
-              <mat-icon class="link-arrow">chevron_right</mat-icon>
-            </button>
-
-            @if (account.accountType === 'CREDIT_CARD' && account.currentBalance > 0) {
-              <button mat-stroked-button
-                      class="make-payment-btn"
-                      (click)="openCCPaymentDialog(account)"
-                      [attr.aria-label]="'Make payment on ' + account.name">
-                <mat-icon>payments</mat-icon>
-                Make Payment
-              </button>
-            }
-
-            @if (account.accountType === 'CREDIT_CARD') {
-              <button mat-stroked-button
-                      class="adjust-balance-btn"
-                      (click)="openReconcileDialog(account)"
-                      [attr.aria-label]="'Adjust balance for ' + account.name">
-                <mat-icon>tune</mat-icon>
-                Adjust Balance
-              </button>
-            }
-
-            @if (!account.manual && account.plaidItemId) {
-              <div class="plaid-actions">
-                <button mat-stroked-button
-                        class="disconnect-btn"
-                        (click)="disconnectPlaidItem(account.plaidItemId!)"
-                        [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
-                  <mat-icon>link_off</mat-icon>
-                  Disconnect
+                <button class="view-txn-link" cdkOverlayOrigin #iconOrigin="cdkOverlayOrigin"
+                        (click)="togglePreview(account.id!)"
+                        [attr.aria-label]="'View transactions for ' + account.name">
+                  <mat-icon>receipt_long</mat-icon>
+                  <span>{{ txnCountForAccount(account.id!) }} transactions</span>
+                  <mat-icon class="link-arrow">chevron_right</mat-icon>
                 </button>
+
+                @if (!account.manual && account.plaidItemId) {
+                  <div class="plaid-actions">
+                    <button mat-stroked-button class="disconnect-btn"
+                            (click)="disconnectPlaidItem(account.plaidItemId!)"
+                            [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
+                      <mat-icon>link_off</mat-icon> Disconnect
+                    </button>
+                  </div>
+                }
               </div>
+
+              <ng-template cdkConnectedOverlay
+                           [cdkConnectedOverlayOrigin]="iconOrigin"
+                           [cdkConnectedOverlayOpen]="activePreviewId() === account.id"
+                           [cdkConnectedOverlayHasBackdrop]="true"
+                           cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                           (backdropClick)="closePreview()" (detach)="closePreview()"
+                           [cdkConnectedOverlayPositions]="previewPositions">
+                <app-transaction-preview
+                  [transactions]="previewTransactions()"
+                  [entityName]="previewEntityName()"
+                  [totalCount]="previewTotalCount()"
+                  (selectTransaction)="onPreviewSelectTransaction($event)"
+                  (viewAll)="onPreviewViewAll()" />
+              </ng-template>
             }
           </div>
-
-          <ng-template cdkConnectedOverlay
-                       [cdkConnectedOverlayOrigin]="iconOrigin"
-                       [cdkConnectedOverlayOpen]="activePreviewId() === account.id"
-                       [cdkConnectedOverlayHasBackdrop]="true"
-                       cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                       (backdropClick)="closePreview()"
-                       (detach)="closePreview()"
-                       [cdkConnectedOverlayPositions]="previewPositions">
-            <app-transaction-preview
-              [transactions]="previewTransactions()"
-              [entityName]="previewEntityName()"
-              [totalCount]="previewTotalCount()"
-              (selectTransaction)="onPreviewSelectTransaction($event)"
-              (viewAll)="onPreviewViewAll()" />
-          </ng-template>
         }
-      </div>
+      </section>
+
+      <!-- Credit Cards Section -->
+      <section class="account-section">
+        <div class="section-header">
+          <div class="section-title-row">
+            <mat-icon class="section-icon cc-section-icon">credit_card</mat-icon>
+            <h2>Credit Cards</h2>
+          </div>
+          <span class="section-count">{{ creditCardsList().length }} card{{ creditCardsList().length !== 1 ? 's' : '' }}</span>
+        </div>
+        @if (creditCardsList().length === 0) {
+          <div class="section-empty glass-card">
+            <mat-icon>credit_card</mat-icon>
+            <p>No credit cards yet. Add a credit card to track your spending and debt.</p>
+          </div>
+        } @else {
+          <div class="accounts-grid" @staggerFadeIn>
+            @for (account of creditCardsList(); track account.id) {
+              <div class="account-card glass-card neon-border credit-card-card">
+                <div class="card-header">
+                  <div class="card-icon cc-icon">
+                    <mat-icon>credit_card</mat-icon>
+                  </div>
+                  <div class="card-badges">
+                    <span class="account-type-badge cc-badge">Credit Card</span>
+                    @if (!account.manual) {
+                      <span class="account-type-badge linked-badge" title="Linked via Plaid">
+                        <mat-icon class="badge-icon">link</mat-icon>
+                        Linked
+                      </span>
+                    }
+                  </div>
+                  <button mat-icon-button class="delete-btn"
+                          (click)="deleteAccount(account.id!)"
+                          [attr.aria-label]="'Delete account ' + account.name">
+                    <mat-icon>delete_outline</mat-icon>
+                  </button>
+                </div>
+
+                <div class="editable-field name-field">
+                  <label class="sr-only" [attr.for]="'acct-name-' + account.id">Account name</label>
+                  <input [id]="'acct-name-' + account.id"
+                         class="inline-input name-input" type="text"
+                         [value]="account.name"
+                         (blur)="onNameBlur($event, account)"
+                         (keydown.enter)="blurTarget($event)"
+                         aria-label="Account name" />
+                </div>
+
+                @if (!account.manual && account.institutionName) {
+                  <span class="institution-label">
+                    {{ account.institutionName }}
+                    @if (account.accountMask) { &bull; ••{{ account.accountMask }} }
+                  </span>
+                }
+
+                <div class="balance-field cc-balance-display"
+                     [class.debt-balance]="account.currentBalance > 0"
+                     [attr.aria-label]="'Balance owed'"
+                     title="Credit card balances update from transactions. Use 'Make Payment' or add transactions to adjust.">
+                  <span class="currency-prefix">$</span>
+                  <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
+                </div>
+                @if (account.currentBalance > 0) {
+                  <span class="debt-label">balance owed</span>
+                }
+
+                @if (getUncoveredDebt(account) > 0) {
+                  <button class="uncovered-debt-warning"
+                          (click)="navigateToEnvelopes()" role="status"
+                          title="Allocate funds to the CC Payment envelope to cover this debt">
+                    <mat-icon>warning_amber</mat-icon>
+                    <span>{{ getUncoveredDebt(account) | currency:'USD':'symbol':'1.2-2' }} uncovered debt</span>
+                    <mat-icon class="link-chevron">chevron_right</mat-icon>
+                  </button>
+                }
+
+                @if (account.createdAt) {
+                  <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
+                }
+
+                @if (savingId() === account.id) {
+                  <div class="save-indicator" @fadeIn><mat-icon>sync</mat-icon></div>
+                }
+
+                <button class="view-txn-link" cdkOverlayOrigin #iconOrigin="cdkOverlayOrigin"
+                        (click)="togglePreview(account.id!)"
+                        [attr.aria-label]="'View transactions for ' + account.name">
+                  <mat-icon>receipt_long</mat-icon>
+                  <span>{{ txnCountForAccount(account.id!) }} transactions</span>
+                  <mat-icon class="link-arrow">chevron_right</mat-icon>
+                </button>
+
+                @if (account.currentBalance > 0) {
+                  <button mat-stroked-button class="make-payment-btn"
+                          (click)="openCCPaymentDialog(account)"
+                          [attr.aria-label]="'Make payment on ' + account.name">
+                    <mat-icon>payments</mat-icon> Make Payment
+                  </button>
+                }
+
+                <button mat-stroked-button class="adjust-balance-btn"
+                        (click)="openReconcileDialog(account)"
+                        [attr.aria-label]="'Adjust balance for ' + account.name">
+                  <mat-icon>tune</mat-icon> Adjust Balance
+                </button>
+
+                @if (!account.manual && account.plaidItemId) {
+                  <div class="plaid-actions">
+                    <button mat-stroked-button class="disconnect-btn"
+                            (click)="disconnectPlaidItem(account.plaidItemId!)"
+                            [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
+                      <mat-icon>link_off</mat-icon> Disconnect
+                    </button>
+                  </div>
+                }
+              </div>
+
+              <ng-template cdkConnectedOverlay
+                           [cdkConnectedOverlayOrigin]="iconOrigin"
+                           [cdkConnectedOverlayOpen]="activePreviewId() === account.id"
+                           [cdkConnectedOverlayHasBackdrop]="true"
+                           cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                           (backdropClick)="closePreview()" (detach)="closePreview()"
+                           [cdkConnectedOverlayPositions]="previewPositions">
+                <app-transaction-preview
+                  [transactions]="previewTransactions()"
+                  [entityName]="previewEntityName()"
+                  [totalCount]="previewTotalCount()"
+                  (selectTransaction)="onPreviewSelectTransaction($event)"
+                  (viewAll)="onPreviewViewAll()" />
+              </ng-template>
+            }
+          </div>
+        }
+      </section>
     }
 
     <button mat-fab
             color="primary"
             class="fab-add"
             (click)="openCreateDialog()"
-            aria-label="Add new bank account">
+            aria-label="Add new account">
       <mat-icon>add</mat-icon>
     </button>
 
@@ -355,6 +439,69 @@ import {
       letter-spacing: -0.02em;
     }
 
+    .account-section {
+      margin-bottom: 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-subtle);
+
+      h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+    }
+
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-icon {
+      font-size: 22px;
+      width: 22px;
+      height: 22px;
+      color: var(--accent-primary);
+    }
+
+    .cc-section-icon {
+      color: #fb923c;
+    }
+
+    .section-count {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .section-empty {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.5rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+
+      mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      p {
+        margin: 0;
+      }
+    }
+
     .accounts-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -373,8 +520,8 @@ import {
 
     .card-header {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
+      gap: 0.5rem;
       margin-bottom: 1rem;
     }
 
@@ -386,6 +533,7 @@ import {
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
 
       mat-icon {
         color: var(--accent-primary);
@@ -408,6 +556,13 @@ import {
       }
     }
 
+    .card-badges {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      margin-left: auto;
+    }
+
     .account-type-badge {
       font-size: 0.65rem;
       font-weight: 600;
@@ -415,8 +570,6 @@ import {
       letter-spacing: 0.06em;
       padding: 0.2rem 0.5rem;
       border-radius: var(--radius-sm);
-      margin-left: auto;
-      margin-right: 0.25rem;
 
       &.cc-badge {
         background: rgba(251, 146, 60, 0.12);
@@ -838,13 +991,15 @@ import {
     }
 
     .add-manual-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       color: var(--text-secondary);
 
       mat-icon {
         font-size: 18px;
         width: 18px;
         height: 18px;
-        margin-right: 0.25rem;
       }
     }
 
@@ -937,6 +1092,14 @@ export class Accounts implements OnInit {
   protected readonly savingId = signal<string | null>(null);
   protected readonly activePreviewId = signal<string | null>(null);
   protected readonly connectingBank = signal(false);
+
+  protected readonly bankAccountsList = computed(() =>
+    this.dashboardState.accounts().filter(a => a.accountType !== 'CREDIT_CARD')
+  );
+
+  protected readonly creditCardsList = computed(() =>
+    this.dashboardState.accounts().filter(a => a.accountType === 'CREDIT_CARD')
+  );
 
   protected readonly previewPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },

@@ -132,6 +132,10 @@ function passwordsMatchValidator(control: AbstractControl): ValidationErrors | n
           </p>
         </mat-card-content>
       </mat-card>
+
+      <footer class="auth-footer">
+        <span>This is a personal project for demonstration purposes only and does not constitute financial advice.</span>
+      </footer>
     </div>
   `,
   styles: `
@@ -243,6 +247,16 @@ function passwordsMatchValidator(control: AbstractControl): ValidationErrors | n
         color: var(--accent-primary);
         font-weight: 500;
       }
+    }
+
+    .auth-footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-style: italic;
+      max-width: 420px;
+      line-height: 1.4;
     }
   `
 })
