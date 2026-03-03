@@ -16,6 +16,7 @@ const mockAdviceResponse: AiAdviceDTO = {
   advice: '**Spending Patterns**\nYou spent $450 on groceries this month.',
   generatedAt: new Date().toISOString(),
   cachedUntil: new Date(Date.now() + 86400000).toISOString(),
+  refreshesRemaining: 2,
 };
 
 describe('AiInsightsCard', () => {
@@ -99,5 +100,44 @@ describe('AiInsightsCard', () => {
 
     expect(aiAdviceService.clearCache).toHaveBeenCalled();
     expect(aiAdviceService.getAdvice).toHaveBeenCalled();
+  });
+
+  it('should show rate limit message on 429 error', () => {
+    aiAdviceService.getAdvice.mockReturnValue(throwError(() => ({ status: 429 })));
+    const fixture = TestBed.createComponent(AiInsightsCard);
+    fixture.detectChanges();
+
+    fixture.componentInstance.generateAdvice();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.ai-error')).toBeTruthy();
+    expect(el.textContent).toContain('Daily advice limit reached');
+  });
+
+  it('should show refreshes remaining after generation', () => {
+    aiAdviceService.getAdvice.mockReturnValue(of(mockAdviceResponse));
+    const fixture = TestBed.createComponent(AiInsightsCard);
+    fixture.detectChanges();
+
+    fixture.componentInstance.generateAdvice();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('2 refreshes left today');
+  });
+
+  it('should hide refresh button when no refreshes remaining', () => {
+    const noRefreshResponse = { ...mockAdviceResponse, refreshesRemaining: 0 };
+    aiAdviceService.getAdvice.mockReturnValue(of(noRefreshResponse));
+    const fixture = TestBed.createComponent(AiInsightsCard);
+    fixture.detectChanges();
+
+    fixture.componentInstance.generateAdvice();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.refresh-btn')).toBeFalsy();
+    expect(el.textContent).toContain('Resets tomorrow');
   });
 });

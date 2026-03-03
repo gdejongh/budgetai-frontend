@@ -65,12 +65,16 @@ import { slideInUp, fadeIn } from '../../../shared/animations/route-animations';
           <div class="ai-footer">
             <span class="ai-timestamp">
               <mat-icon>schedule</mat-icon>
-              {{ timeAgo() }}
+              {{ timeAgo() }} &middot; {{ advice()!.refreshesRemaining }} refresh{{ advice()!.refreshesRemaining === 1 ? '' : 'es' }} left today
             </span>
-            <button mat-stroked-button class="refresh-btn" (click)="refreshAdvice()">
-              <mat-icon>refresh</mat-icon>
-              Refresh
-            </button>
+            @if (advice()!.refreshesRemaining > 0) {
+              <button mat-stroked-button class="refresh-btn" (click)="refreshAdvice()">
+                <mat-icon>refresh</mat-icon>
+                Refresh
+              </button>
+            } @else {
+              <span class="rate-limit-note">Resets tomorrow</span>
+            }
           </div>
         </div>
       }
@@ -309,6 +313,12 @@ import { slideInUp, fadeIn } from '../../../shared/animations/route-animations';
         color: var(--accent-primary);
       }
     }
+
+    .rate-limit-note {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
   `,
 })
 export class AiInsightsCard {
@@ -348,8 +358,11 @@ export class AiInsightsCard {
         this.advice.set(response);
         this.loading.set(false);
       },
-      error: () => {
-        this.error.set('Unable to generate advice. Please try again later.');
+      error: (err) => {
+        const msg = err?.status === 429
+          ? 'Daily advice limit reached (3/day). Try again tomorrow.'
+          : 'Unable to generate advice. Please try again later.';
+        this.error.set(msg);
         this.loading.set(false);
       },
     });
@@ -366,8 +379,11 @@ export class AiInsightsCard {
             this.advice.set(response);
             this.loading.set(false);
           },
-          error: () => {
-            this.error.set('Unable to refresh advice. Please try again later.');
+          error: (err) => {
+            const msg = err?.status === 429
+              ? 'Daily advice limit reached (3/day). Try again tomorrow.'
+              : 'Unable to refresh advice. Please try again later.';
+            this.error.set(msg);
             this.loading.set(false);
           },
         });

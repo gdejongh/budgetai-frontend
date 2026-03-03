@@ -8,6 +8,7 @@ export interface AiAdviceDTO {
   advice: string;
   generatedAt: string;
   cachedUntil: string;
+  refreshesRemaining: number;
 }
 
 @Injectable({ providedIn: 'root' })
