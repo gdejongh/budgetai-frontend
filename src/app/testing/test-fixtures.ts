@@ -151,6 +151,7 @@ export function createMockTransactionApi() {
     updateTransaction: vi.fn(),
     deleteTransaction: vi.fn(),
     createCCPayment: vi.fn(),
+    createTransfer: vi.fn(),
   };
 }
 

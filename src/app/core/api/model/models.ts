@@ -18,3 +18,4 @@ export * from './reconcileBalanceRequest';
 export * from './refreshRequestDTO';
 export * from './setAllocationRequest';
 export * from './transactionDTO';
+export * from './transferRequest';

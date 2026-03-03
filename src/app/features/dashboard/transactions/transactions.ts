@@ -77,7 +77,7 @@ type SortDirection = 'asc' | 'desc';
       <div class="search-bar glass-card" @fadeIn>
         <mat-icon class="search-icon">search</mat-icon>
         <input type="text"
-               placeholder="Search by description, account, or envelope..."
+               placeholder="Search by merchant, description, account, or envelope..."
                [ngModel]="searchQuery()"
                (ngModelChange)="searchQuery.set($event)"
                aria-label="Search transactions" />
@@ -190,11 +190,24 @@ type SortDirection = 'asc' | 'desc';
                     (keydown.enter)="openEditDialog($event, transaction)">
                   <td class="col-description">
                     <div class="description-cell">
-                      <span class="cell-description">{{ transaction.description || 'Untitled' }}</span>
+                      @if (transaction.merchantName) {
+                        <span class="cell-merchant">{{ transaction.merchantName }}</span>
+                        @if (transaction.description && transaction.description !== transaction.merchantName) {
+                          <span class="cell-description">{{ transaction.description }}</span>
+                        }
+                      } @else {
+                        <span class="cell-description">{{ transaction.description || 'Untitled' }}</span>
+                      }
                       @if (transaction.transactionType === 'CC_PAYMENT') {
                         <span class="cc-payment-badge" title="Credit card payment">
                           <mat-icon>link</mat-icon>
                           CC Payment
+                        </span>
+                      }
+                      @if (transaction.transactionType === 'TRANSFER') {
+                        <span class="transfer-badge" title="Account transfer">
+                          <mat-icon>swap_horiz</mat-icon>
+                          Transfer
                         </span>
                       }
                     </div>
@@ -285,6 +298,8 @@ type SortDirection = 'asc' | 'desc';
           <h3>Delete Transaction?</h3>
           @if (isDeletingCCPayment()) {
             <p>This is a credit card payment. Both the bank and credit card sides will be deleted.</p>
+          } @else if (isDeletingTransfer()) {
+            <p>This is an account transfer. Both sides of the transfer will be deleted.</p>
           } @else {
             <p>This action cannot be undone.</p>
           }
@@ -815,8 +830,18 @@ type SortDirection = 'asc' | 'desc';
     /* ---- CC Payment badge ---- */
     .description-cell {
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .cell-merchant {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .cell-merchant + .cell-description {
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
 
     .cc-payment-badge {
@@ -833,6 +858,30 @@ type SortDirection = 'asc' | 'desc';
       color: #fb923c;
       white-space: nowrap;
       flex-shrink: 0;
+      width: fit-content;
+
+      mat-icon {
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    .transfer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-sm);
+      background: rgba(129, 140, 248, 0.12);
+      color: #818cf8;
+      white-space: nowrap;
+      flex-shrink: 0;
+      width: fit-content;
 
       mat-icon {
         font-size: 12px;
@@ -908,6 +957,13 @@ export class Transactions implements OnInit {
     return txn?.transactionType === 'CC_PAYMENT';
   });
 
+  protected readonly isDeletingTransfer = computed(() => {
+    const id = this.deletingId();
+    if (!id) return false;
+    const txn = this.dashboardState.transactions().find(t => t.id === id);
+    return txn?.transactionType === 'TRANSFER';
+  });
+
   isAccountCreditCard(accountId: string): boolean {
     return this.accountTypeMap()[accountId] === 'CREDIT_CARD';
   }
@@ -940,9 +996,10 @@ export class Transactions implements OnInit {
 
     return txns.filter(t => {
       const desc = (t.description ?? '').toLowerCase();
+      const merchant = (t.merchantName ?? '').toLowerCase();
       const accName = (accMap[t.bankAccountId] ?? '').toLowerCase();
       const envName = (t.envelopeId ? (envMap[t.envelopeId] ?? '') : '').toLowerCase();
-      return desc.includes(query) || accName.includes(query) || envName.includes(query);
+      return desc.includes(query) || merchant.includes(query) || accName.includes(query) || envName.includes(query);
     });
   });
 
@@ -1103,14 +1160,21 @@ export class Transactions implements OnInit {
     });
 
     dialogRef.afterClosed().subscribe((result) => {
-      if (result) {
-        this.dashboardState.addTransaction(result);
+      if (!result) return;
 
-        // If a CC transaction was created with an envelope, reload envelopes
-        // so the CC Payment envelope's allocatedBalance reflects the coverage.
-        if (this.dashboardState.isCreditCard(result.bankAccountId) && result.envelopeId) {
-          this.dashboardState.loadEnvelopes();
-        }
+      // Transfer result: { transfer: true, transactions: [source, dest] }
+      if (result.transfer && result.transactions?.length === 2) {
+        this.dashboardState.addTransfer(result.transactions[0], result.transactions[1]);
+        return;
+      }
+
+      // Regular transaction result
+      this.dashboardState.addTransaction(result);
+
+      // If a CC transaction was created with an envelope, reload envelopes
+      // so the CC Payment envelope's allocatedBalance reflects the coverage.
+      if (this.dashboardState.isCreditCard(result.bankAccountId) && result.envelopeId) {
+        this.dashboardState.loadEnvelopes();
       }
     });
   }
@@ -1120,8 +1184,8 @@ export class Transactions implements OnInit {
     const target = event.target as HTMLElement;
     if (target.closest('.delete-btn')) return;
 
-    // CC_PAYMENT transactions are system-managed linked pairs and cannot be edited
-    if (transaction.transactionType === 'CC_PAYMENT') return;
+    // CC_PAYMENT and TRANSFER transactions are system-managed linked pairs and cannot be edited
+    if (transaction.transactionType === 'CC_PAYMENT' || transaction.transactionType === 'TRANSFER') return;
 
     const dialogRef = this.dialog.open(EditTransactionDialog, {
       width: '440px',

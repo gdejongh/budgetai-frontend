@@ -315,8 +315,9 @@ export class DashboardStateService {
   removeTransaction(id: string): void {
     const transaction = this.transactions().find(t => t.id === id);
     if (transaction) {
-      // If this is a CC_PAYMENT, also remove the linked transaction
-      if (transaction.transactionType === 'CC_PAYMENT' && transaction.linkedTransactionId) {
+      // If this is a CC_PAYMENT or TRANSFER, also remove the linked transaction
+      if ((transaction.transactionType === 'CC_PAYMENT' || transaction.transactionType === 'TRANSFER')
+          && transaction.linkedTransactionId) {
         const linked = this.transactions().find(t => t.id === transaction.linkedTransactionId);
         this.transactions.update(current =>
           current.filter(t => t.id !== id && t.id !== transaction.linkedTransactionId)
@@ -433,6 +434,28 @@ export class DashboardStateService {
     if (ccPaymentEnv?.id) {
       this.adjustEnvelopeAllocation(ccPaymentEnv.id, -ccTransaction.amount);
     }
+
+    this.loadSpentSummaries();
+  }
+
+  /**
+   * Optimistically update state after an account-to-account transfer.
+   * Adds both the source-side and destination-side transactions, adjusts both balances.
+   * No envelope changes — transfers don't affect budgets.
+   */
+  addTransfer(sourceTransaction: TransactionDTO, destTransaction: TransactionDTO): void {
+    this.transactions.update(current => [sourceTransaction, destTransaction, ...current]);
+    // Source side: negative amount decreases source balance (CC inversion applies)
+    const sourceAccount = this.accounts().find(a => a.id === sourceTransaction.bankAccountId);
+    const sourceIsCreditCard = sourceAccount?.accountType === 'CREDIT_CARD';
+    const sourceBalanceChange = sourceIsCreditCard ? -sourceTransaction.amount : sourceTransaction.amount;
+    this.adjustAccountBalance(sourceTransaction.bankAccountId, sourceBalanceChange);
+
+    // Destination side: positive amount increases destination balance (CC inversion applies)
+    const destAccount = this.accounts().find(a => a.id === destTransaction.bankAccountId);
+    const destIsCreditCard = destAccount?.accountType === 'CREDIT_CARD';
+    const destBalanceChange = destIsCreditCard ? -destTransaction.amount : destTransaction.amount;
+    this.adjustAccountBalance(destTransaction.bankAccountId, destBalanceChange);
 
     this.loadSpentSummaries();
   }

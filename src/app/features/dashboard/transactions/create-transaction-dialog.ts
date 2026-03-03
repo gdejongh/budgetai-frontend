@@ -20,6 +20,7 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { TransactionControllerService } from '../../../core/api/api/transactionController.service';
 import { TransactionDTO } from '../../../core/api/model/transactionDTO';
+import { TransferRequest } from '../../../core/api/model/transferRequest';
 import { DashboardStateService } from '../dashboard-state.service';
 import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
@@ -43,40 +44,49 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
   template: `
     <div class="dialog-container" @fadeIn>
       <h2 mat-dialog-title class="dialog-title">
-        <mat-icon class="title-icon" [class.deposit-icon]="transactionType() === 'deposit'"
-                                      [class.withdrawal-icon]="transactionType() === 'withdrawal'">
-          {{ transactionType() === 'deposit' ? 'attach_money' : 'money_off' }}
+        <mat-icon class="title-icon" [class.deposit-icon]="!isTransfer() && transactionType() === 'deposit'"
+                                      [class.withdrawal-icon]="!isTransfer() && transactionType() === 'withdrawal'"
+                                      [class.transfer-icon]="isTransfer()">
+          {{ isTransfer() ? 'swap_horiz' : (transactionType() === 'deposit' ? 'attach_money' : 'money_off') }}
         </mat-icon>
-        <span [class.deposit-text]="transactionType() === 'deposit'"
-              [class.withdrawal-text]="transactionType() === 'withdrawal'">
+        <span [class.deposit-text]="!isTransfer() && transactionType() === 'deposit'"
+              [class.withdrawal-text]="!isTransfer() && transactionType() === 'withdrawal'"
+              [class.transfer-text]="isTransfer()">
           {{ dialogTitle() }}
         </span>
       </h2>
 
       <mat-dialog-content>
-        <!-- Deposit / Withdrawal toggle -->
-        <div class="type-toggle" role="radiogroup" aria-label="Transaction type">
-          <button type="button"
-                  class="toggle-btn deposit"
-                  [class.active]="transactionType() === 'deposit'"
-                  role="radio"
-                  [attr.aria-checked]="transactionType() === 'deposit'"
-                  [attr.aria-label]="isCreditCard() ? 'Refund' : 'Deposit'"
-                  (click)="transactionType.set('deposit')">
-            <mat-icon>arrow_downward</mat-icon>
-            {{ isCreditCard() ? 'Refund' : 'Deposit' }}
-          </button>
-          <button type="button"
-                  class="toggle-btn withdrawal"
-                  [class.active]="transactionType() === 'withdrawal'"
-                  role="radio"
-                  [attr.aria-checked]="transactionType() === 'withdrawal'"
-                  [attr.aria-label]="isCreditCard() ? 'Purchase' : 'Withdrawal'"
-                  (click)="transactionType.set('withdrawal')">
-            <mat-icon>arrow_upward</mat-icon>
-            {{ isCreditCard() ? 'Purchase' : 'Withdrawal' }}
-          </button>
-        </div>
+        <!-- Deposit / Withdrawal toggle (hidden during transfer) -->
+        @if (!isTransfer()) {
+          <div class="type-toggle" role="radiogroup" aria-label="Transaction type">
+            <button type="button"
+                    class="toggle-btn deposit"
+                    [class.active]="transactionType() === 'deposit'"
+                    role="radio"
+                    [attr.aria-checked]="transactionType() === 'deposit'"
+                    [attr.aria-label]="isCreditCard() ? 'Refund' : 'Deposit'"
+                    (click)="transactionType.set('deposit')">
+              <mat-icon>arrow_downward</mat-icon>
+              {{ isCreditCard() ? 'Refund' : 'Deposit' }}
+            </button>
+            <button type="button"
+                    class="toggle-btn withdrawal"
+                    [class.active]="transactionType() === 'withdrawal'"
+                    role="radio"
+                    [attr.aria-checked]="transactionType() === 'withdrawal'"
+                    [attr.aria-label]="isCreditCard() ? 'Purchase' : 'Withdrawal'"
+                    (click)="transactionType.set('withdrawal')">
+              <mat-icon>arrow_upward</mat-icon>
+              {{ isCreditCard() ? 'Purchase' : 'Withdrawal' }}
+            </button>
+          </div>
+        } @else {
+          <div class="transfer-banner" @slideInUp>
+            <mat-icon>swap_horiz</mat-icon>
+            <span>Transfer to <strong>{{ transferDestinationName() }}</strong></span>
+          </div>
+        }
 
         @if (errorMessage()) {
           <div class="error-banner" @slideInUp role="alert">
@@ -112,11 +122,44 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
           </mat-form-field>
 
           <mat-form-field appearance="fill">
+            <mat-label>Merchant</mat-label>
+            <input matInput
+                   formControlName="merchantName"
+                   [matAutocomplete]="merchantAuto"
+                   (input)="onMerchantInput($event)"
+                   placeholder="e.g. Amazon, Walmart..."
+                   autocomplete="off" />
+            @if (form.controls.merchantName.value) {
+              <button matSuffix mat-icon-button type="button"
+                      (click)="clearMerchant()"
+                      aria-label="Clear merchant">
+                <mat-icon>close</mat-icon>
+              </button>
+            }
+            <mat-autocomplete #merchantAuto="matAutocomplete"
+                              (optionSelected)="onMerchantSelected($event)">
+              @for (option of merchantSuggestions(); track option.id) {
+                <mat-option [value]="option.label">
+                  <mat-icon class="option-icon transfer-option">swap_horiz</mat-icon>
+                  {{ option.label }}
+                </mat-option>
+              }
+            </mat-autocomplete>
+            @if (form.controls.merchantName.hasError('required') && form.controls.merchantName.touched) {
+              <mat-error>Merchant is required</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
             <mat-label>Amount</mat-label>
-            <span matTextPrefix [class.deposit-prefix]="transactionType() === 'deposit'"
-                                [class.withdrawal-prefix]="transactionType() === 'withdrawal'">
-              {{ transactionType() === 'deposit' ? '+$' : '-$' }}&nbsp;
-            </span>
+            @if (!isTransfer()) {
+              <span matTextPrefix [class.deposit-prefix]="transactionType() === 'deposit'"
+                                  [class.withdrawal-prefix]="transactionType() === 'withdrawal'">
+                {{ transactionType() === 'deposit' ? '+$' : '-$' }}&nbsp;
+              </span>
+            } @else {
+              <span matTextPrefix class="transfer-prefix">$&nbsp;</span>
+            }
             <input matInput type="number" formControlName="amount"
                        placeholder="0.00" step="0.01" min="0"
                        (focus)="onAmountFocus()"
@@ -131,7 +174,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
           </mat-form-field>
 
           <mat-form-field appearance="fill">
-            <mat-label>Description</mat-label>
+            <mat-label>Description (optional)</mat-label>
             <input matInput formControlName="description"
                    placeholder="e.g. Grocery shopping" autocomplete="off" />
           </mat-form-field>
@@ -146,29 +189,31 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
             }
           </mat-form-field>
 
-          <mat-form-field appearance="fill">
-            <mat-label>Envelope (optional)</mat-label>
-            <input matInput
-                   formControlName="envelopeId"
-                   [matAutocomplete]="envelopeAuto"
-                   (input)="onEnvelopeInput($event)"
-                   placeholder="Search envelopes..." />
-            @if (form.controls.envelopeId.value) {
-              <button matSuffix mat-icon-button type="button"
-                      (click)="clearEnvelope()"
-                      aria-label="Clear envelope">
-                <mat-icon>close</mat-icon>
-              </button>
-            }
-            <mat-autocomplete #envelopeAuto="matAutocomplete"
-                              [displayWith]="envelopeDisplayFn"
-                              (optionSelected)="onEnvelopeSelected($event)">
-              <mat-option value="">None</mat-option>
-              @for (envelope of filteredEnvelopes(); track envelope.id) {
-                <mat-option [value]="envelope.id">{{ envelope.name }}</mat-option>
+          @if (!isTransfer()) {
+            <mat-form-field appearance="fill">
+              <mat-label>Envelope (optional)</mat-label>
+              <input matInput
+                     formControlName="envelopeId"
+                     [matAutocomplete]="envelopeAuto"
+                     (input)="onEnvelopeInput($event)"
+                     placeholder="Search envelopes..." />
+              @if (form.controls.envelopeId.value) {
+                <button matSuffix mat-icon-button type="button"
+                        (click)="clearEnvelope()"
+                        aria-label="Clear envelope">
+                  <mat-icon>close</mat-icon>
+                </button>
               }
-            </mat-autocomplete>
-          </mat-form-field>
+              <mat-autocomplete #envelopeAuto="matAutocomplete"
+                                [displayWith]="envelopeDisplayFn"
+                                (optionSelected)="onEnvelopeSelected($event)">
+                <mat-option value="">None</mat-option>
+                @for (envelope of filteredEnvelopes(); track envelope.id) {
+                  <mat-option [value]="envelope.id">{{ envelope.name }}</mat-option>
+                }
+              </mat-autocomplete>
+            </mat-form-field>
+          }
         </form>
       </mat-dialog-content>
 
@@ -177,12 +222,13 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
         <button mat-flat-button color="primary"
                 type="submit" form="create-transaction-form"
                 class="submit-btn"
+                [class.transfer-btn]="isTransfer()"
                 [disabled]="loading() || form.invalid">
           @if (loading()) {
             <mat-spinner diameter="20"></mat-spinner>
           } @else {
             <ng-container>
-              <mat-icon>{{ transactionType() === 'deposit' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
+              <mat-icon>{{ isTransfer() ? 'swap_horiz' : (transactionType() === 'deposit' ? 'arrow_downward' : 'arrow_upward') }}</mat-icon>
               {{ submitLabel() }}
             </ng-container>
           }
@@ -211,6 +257,7 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
     .deposit-icon { color: var(--success); }
     .withdrawal-icon { color: var(--danger); }
+    .transfer-icon { color: var(--accent-primary, #818cf8); }
 
     .deposit-text {
       background: linear-gradient(135deg, #34d399, #6ee7b7);
@@ -222,6 +269,14 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
 
     .withdrawal-text {
       background: linear-gradient(135deg, #f87171, #fca5a5);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+    }
+
+    .transfer-text {
+      background: linear-gradient(135deg, #818cf8, #a5b4fc);
       -webkit-background-clip: text;
       background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -295,6 +350,38 @@ import { fadeIn, slideInUp } from '../../../shared/animations/route-animations';
       font-weight: 600;
     }
 
+    .transfer-prefix {
+      color: var(--accent-primary, #818cf8);
+      font-weight: 600;
+    }
+
+    .transfer-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      margin-bottom: 1rem;
+      border-radius: var(--radius-sm);
+      background: rgba(129, 140, 248, 0.1);
+      border: 1px solid rgba(129, 140, 248, 0.3);
+      color: var(--accent-primary, #818cf8);
+      font-size: 0.9rem;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .transfer-option {
+      color: var(--accent-primary, #818cf8) !important;
+    }
+
+    .transfer-btn {
+      background: linear-gradient(135deg, #818cf8, #6366f1) !important;
+    }
+
     mat-dialog-content { padding-top: 0.5rem; }
     form { display: flex; flex-direction: column; gap: 0.25rem; }
 
@@ -334,11 +421,33 @@ export class CreateTransactionDialog {
   protected readonly transactionType = signal<'deposit' | 'withdrawal'>('withdrawal');
   protected readonly selectedAccountId = signal('');
   protected readonly envelopeSearchText = signal('');
+  protected readonly merchantSearchText = signal('');
+  protected readonly transferDestinationId = signal<string | null>(null);
 
   protected readonly isCreditCard = computed(() => {
     const id = this.selectedAccountId();
     if (!id) return false;
     return this.dashboardState.isCreditCard(id);
+  });
+
+  /** True when the merchant field matches a transfer suggestion. */
+  protected readonly isTransfer = computed(() => !!this.transferDestinationId());
+
+  protected readonly transferDestinationName = computed(() => {
+    const id = this.transferDestinationId();
+    if (!id) return '';
+    const account = this.dashboardState.accounts().find(a => a.id === id);
+    return account?.name ?? '';
+  });
+
+  /** Autocomplete suggestions for the merchant field — shows transfer options for other accounts. */
+  protected readonly merchantSuggestions = computed(() => {
+    const search = this.merchantSearchText().toLowerCase();
+    const currentAccountId = this.selectedAccountId();
+    return this.dashboardState.accounts()
+      .filter(a => a.id !== currentAccountId)
+      .map(a => ({ id: a.id!, label: `Transfer \u2192 ${a.name}` }))
+      .filter(opt => !search || opt.label.toLowerCase().includes(search));
   });
 
   protected readonly filteredEnvelopes = computed(() => {
@@ -355,6 +464,7 @@ export class CreateTransactionDialog {
   };
 
   protected readonly dialogTitle = computed(() => {
+    if (this.isTransfer()) return 'New Transfer';
     if (this.isCreditCard()) {
       return this.transactionType() === 'deposit' ? 'CC Refund' : 'CC Purchase';
     }
@@ -362,6 +472,7 @@ export class CreateTransactionDialog {
   });
 
   protected readonly submitLabel = computed(() => {
+    if (this.isTransfer()) return 'Transfer';
     if (this.isCreditCard()) {
       return this.transactionType() === 'deposit' ? 'Add Refund' : 'Add Purchase';
     }
@@ -370,17 +481,22 @@ export class CreateTransactionDialog {
 
   private readonly glowEffect = effect(() => {
     const type = this.transactionType();
-    if (type === 'deposit') {
-      this.dialogRef.removePanelClass('withdrawal-glow-dialog');
+    const transfer = this.isTransfer();
+    this.dialogRef.removePanelClass('withdrawal-glow-dialog');
+    this.dialogRef.removePanelClass('deposit-glow-dialog');
+    this.dialogRef.removePanelClass('transfer-glow-dialog');
+    if (transfer) {
+      this.dialogRef.addPanelClass('transfer-glow-dialog');
+    } else if (type === 'deposit') {
       this.dialogRef.addPanelClass('deposit-glow-dialog');
     } else {
-      this.dialogRef.removePanelClass('deposit-glow-dialog');
       this.dialogRef.addPanelClass('withdrawal-glow-dialog');
     }
   });
 
   protected readonly form = this.fb.nonNullable.group({
     bankAccountId: ['', Validators.required],
+    merchantName: ['', Validators.required],
     amount: [0, [Validators.required, Validators.min(0.01)]],
     description: [''],
     transactionDate: [new Date(), Validators.required],
@@ -390,22 +506,57 @@ export class CreateTransactionDialog {
   constructor() {
     this.form.controls.bankAccountId.valueChanges.subscribe(id => {
       this.selectedAccountId.set(id);
+      // If account changed and we had a transfer destination that matches the new account, clear it
+      if (this.transferDestinationId() === id) {
+        this.clearMerchant();
+      }
     });
   }
 
   onAmountFocus(): void {
     const ctrl = this.form.controls.amount;
     if (ctrl.value === 0) {
-      ctrl.setValue(null as unknown as number); // Clear the field visually
+      ctrl.setValue(null as unknown as number);
     }
   }
 
   onAmountBlur(): void {
     const ctrl = this.form.controls.amount;
-    // If left empty (null), reset to 0
     if (ctrl.value === null) {
       ctrl.setValue(0);
     }
+  }
+
+  onMerchantInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.merchantSearchText.set(value);
+    // If the user edits the text and it no longer matches a transfer, clear the transfer state
+    const match = this.dashboardState.accounts().find(a =>
+      `Transfer \u2192 ${a.name}` === value && a.id !== this.selectedAccountId()
+    );
+    this.transferDestinationId.set(match?.id ?? null);
+  }
+
+  onMerchantSelected(event: { option: { value: string } }): void {
+    const label = event.option.value;
+    this.merchantSearchText.set('');
+    // Find the account that matches this transfer label
+    const match = this.dashboardState.accounts().find(a =>
+      `Transfer \u2192 ${a.name}` === label && a.id !== this.selectedAccountId()
+    );
+    if (match) {
+      this.transferDestinationId.set(match.id!);
+      // Clear envelope since transfers don't use envelopes
+      this.form.controls.envelopeId.setValue('');
+    } else {
+      this.transferDestinationId.set(null);
+    }
+  }
+
+  clearMerchant(): void {
+    this.form.controls.merchantName.setValue('');
+    this.merchantSearchText.set('');
+    this.transferDestinationId.set(null);
   }
 
   onEnvelopeInput(event: Event): void {
@@ -436,30 +587,59 @@ export class CreateTransactionDialog {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
 
-    const signedAmount = this.transactionType() === 'withdrawal'
-      ? -Math.abs(raw.amount)
-      : Math.abs(raw.amount);
+    if (this.isTransfer()) {
+      // Transfer flow
+      const transferReq: TransferRequest = {
+        sourceAccountId: raw.bankAccountId,
+        destinationAccountId: this.transferDestinationId()!,
+        amount: Math.abs(raw.amount),
+        merchantName: raw.merchantName || undefined,
+        description: raw.description || undefined,
+        transactionDate: formattedDate,
+      };
 
-    const dto: TransactionDTO = {
-      bankAccountId: raw.bankAccountId,
-      amount: signedAmount,
-      description: raw.description || undefined,
-      transactionDate: `${year}-${month}-${day}`,
-      envelopeId: raw.envelopeId || undefined,
-    };
+      this.transactionApi.createTransfer(transferReq).subscribe({
+        next: (created) => {
+          this.loading.set(false);
+          // Close with both transactions so the parent can do optimistic updates
+          this.dialogRef.close({ transfer: true, transactions: created });
+        },
+        error: (err) => {
+          this.loading.set(false);
+          this.errorMessage.set(
+            err.error?.message || 'Failed to create transfer. Please try again.'
+          );
+        },
+      });
+    } else {
+      // Regular transaction flow
+      const signedAmount = this.transactionType() === 'withdrawal'
+        ? -Math.abs(raw.amount)
+        : Math.abs(raw.amount);
 
-    this.transactionApi.createTransaction(dto).subscribe({
-      next: (created) => {
-        this.loading.set(false);
-        this.dialogRef.close(created);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.errorMessage.set(
-          err.error?.message || 'Failed to create transaction. Please try again.'
-        );
-      },
-    });
+      const dto: TransactionDTO = {
+        bankAccountId: raw.bankAccountId,
+        amount: signedAmount,
+        merchantName: raw.merchantName || undefined,
+        description: raw.description || undefined,
+        transactionDate: formattedDate,
+        envelopeId: raw.envelopeId || undefined,
+      };
+
+      this.transactionApi.createTransaction(dto).subscribe({
+        next: (created) => {
+          this.loading.set(false);
+          this.dialogRef.close(created);
+        },
+        error: (err) => {
+          this.loading.set(false);
+          this.errorMessage.set(
+            err.error?.message || 'Failed to create transaction. Please try again.'
+          );
+        },
+      });
+    }
   }
 }

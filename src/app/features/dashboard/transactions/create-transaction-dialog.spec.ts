@@ -71,6 +71,7 @@ describe('CreateTransactionDialog', () => {
 
     it('form is valid with required fields', () => {
       component['form'].controls.bankAccountId.setValue('acct-1');
+      component['form'].controls.merchantName.setValue('Amazon');
       component['form'].controls.amount.setValue(50);
       expect(component['form'].valid).toBe(true);
     });
@@ -141,6 +142,7 @@ describe('CreateTransactionDialog', () => {
       transactionApi.createTransaction.mockReturnValue(of(created));
 
       component['form'].controls.bankAccountId.setValue('acct-1');
+      component['form'].controls.merchantName.setValue('Grocery Store');
       component['form'].controls.amount.setValue(50);
       component['form'].controls.transactionDate.setValue(new Date(2026, 2, 15));
       component['transactionType'].set('withdrawal');
@@ -157,6 +159,7 @@ describe('CreateTransactionDialog', () => {
       transactionApi.createTransaction.mockReturnValue(of(created));
 
       component['form'].controls.bankAccountId.setValue('acct-1');
+      component['form'].controls.merchantName.setValue('Employer');
       component['form'].controls.amount.setValue(100);
       component['form'].controls.transactionDate.setValue(new Date(2026, 2, 15));
       component['transactionType'].set('deposit');
@@ -170,6 +173,7 @@ describe('CreateTransactionDialog', () => {
       transactionApi.createTransaction.mockReturnValue(of(mockTransaction()));
 
       component['form'].controls.bankAccountId.setValue('acct-1');
+      component['form'].controls.merchantName.setValue('Grocery Store');
       component['form'].controls.amount.setValue(25);
       component['form'].controls.envelopeId.setValue('env-1');
       component['form'].controls.transactionDate.setValue(new Date(2026, 2, 15));
@@ -185,6 +189,7 @@ describe('CreateTransactionDialog', () => {
       );
 
       component['form'].controls.bankAccountId.setValue('acct-1');
+      component['form'].controls.merchantName.setValue('Store');
       component['form'].controls.amount.setValue(50);
       component['form'].controls.transactionDate.setValue(new Date(2026, 2, 15));
       component.onSubmit();
