@@ -358,8 +358,20 @@ import {
                           @if (envelope.goalType) {
                             <div class="goal-section" @slideInUp>
                               <div class="goal-header">
-                                <mat-icon class="goal-icon">{{ envelope.goalType === 'MONTHLY' ? 'repeat' : 'flag' }}</mat-icon>
-                                <span class="goal-label">{{ envelope.goalType === 'MONTHLY' ? 'Monthly Goal' : 'Savings Target' }}</span>
+                                @switch (envelope.goalType) {
+                                  @case ('MONTHLY') {
+                                    <mat-icon class="goal-icon">repeat</mat-icon>
+                                    <span class="goal-label">Monthly Goal</span>
+                                  }
+                                  @case ('WEEKLY') {
+                                    <mat-icon class="goal-icon">date_range</mat-icon>
+                                    <span class="goal-label">Weekly Goal</span>
+                                  }
+                                  @default {
+                                    <mat-icon class="goal-icon">flag</mat-icon>
+                                    <span class="goal-label">Savings Target</span>
+                                  }
+                                }
                                 <button mat-icon-button
                                         class="goal-edit-btn"
                                         (click)="openSavingsGoalDialog(envelope)"
@@ -368,43 +380,59 @@ import {
                                 </button>
                               </div>
 
-                              @if (envelope.goalType === 'MONTHLY') {
-                                <!-- Monthly Goal: just the monthly check -->
-                                <div class="goal-monthly-check">
-                                  <mat-icon [class.met]="isMonthlyGoalMet(envelope)" [class.unmet]="!isMonthlyGoalMet(envelope)">
-                                    {{ isMonthlyGoalMet(envelope) ? 'check_circle' : 'radio_button_unchecked' }}
-                                  </mat-icon>
-                                  <span>
-                                    {{ monthlyNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}
-                                    / {{ envelope.monthlyGoalTarget | currency:'USD':'symbol':'1.2-2' }}
-                                    <span class="goal-period">this month</span>
-                                  </span>
-                                </div>
-                              } @else {
-                                <!-- Target Goal: progress bar + computed monthly -->
-                                <div class="goal-progress-bar" role="progressbar"
-                                     [attr.aria-valuenow]="goalProgressPercent(envelope)"
-                                     aria-valuemin="0" aria-valuemax="100"
-                                     [attr.aria-label]="'Savings goal progress: ' + goalProgressPercent(envelope) + '%'">
-                                  <div class="progress-track">
-                                    <div class="progress-fill goal-fill"
-                                         [style.width]="goalProgressPercent(envelope) + '%'"
-                                    ></div>
+                              @switch (envelope.goalType) {
+                                @case ('MONTHLY') {
+                                  <!-- Monthly Goal: just the monthly check -->
+                                  <div class="goal-monthly-check">
+                                    <mat-icon [class.met]="isMonthlyGoalMet(envelope)" [class.unmet]="!isMonthlyGoalMet(envelope)">
+                                      {{ isMonthlyGoalMet(envelope) ? 'check_circle' : 'radio_button_unchecked' }}
+                                    </mat-icon>
+                                    <span>
+                                      {{ monthlyNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}
+                                      / {{ envelope.monthlyGoalTarget | currency:'USD':'symbol':'1.2-2' }}
+                                      <span class="goal-period">this month</span>
+                                    </span>
                                   </div>
-                                </div>
-                                <div class="goal-stats">
-                                  <span class="goal-saved">{{ goalNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}</span>
-                                  <span class="goal-of">of</span>
-                                  <span class="goal-target">{{ envelope.goalAmount | currency:'USD':'symbol':'1.2-2' }}</span>
-                                </div>
-                                <div class="goal-target-info">
-                                  <mat-icon>schedule</mat-icon>
-                                  <span>
-                                    {{ computedMonthlyForTarget(envelope) | currency:'USD':'symbol':'1.2-2' }}/mo
-                                    &middot;
-                                    {{ monthsUntilTargetDate(envelope) }} months left
-                                  </span>
-                                </div>
+                                }
+                                @case ('WEEKLY') {
+                                  <!-- Weekly Goal: derived from monthly / 4.34 -->
+                                  <div class="goal-monthly-check">
+                                    <mat-icon [class.met]="isWeeklyGoalMet(envelope)" [class.unmet]="!isWeeklyGoalMet(envelope)">
+                                      {{ isWeeklyGoalMet(envelope) ? 'check_circle' : 'radio_button_unchecked' }}
+                                    </mat-icon>
+                                    <span>
+                                      {{ weeklyNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}
+                                      / {{ envelope.monthlyGoalTarget | currency:'USD':'symbol':'1.2-2' }}
+                                      <span class="goal-period">this week</span>
+                                    </span>
+                                  </div>
+                                }
+                                @default {
+                                  <!-- Target Goal: progress bar + computed monthly -->
+                                  <div class="goal-progress-bar" role="progressbar"
+                                       [attr.aria-valuenow]="goalProgressPercent(envelope)"
+                                       aria-valuemin="0" aria-valuemax="100"
+                                       [attr.aria-label]="'Savings goal progress: ' + goalProgressPercent(envelope) + '%'">
+                                    <div class="progress-track">
+                                      <div class="progress-fill goal-fill"
+                                           [style.width]="goalProgressPercent(envelope) + '%'"
+                                      ></div>
+                                    </div>
+                                  </div>
+                                  <div class="goal-stats">
+                                    <span class="goal-saved">{{ goalNetSaved(envelope) | currency:'USD':'symbol':'1.2-2' }}</span>
+                                    <span class="goal-of">of</span>
+                                    <span class="goal-target">{{ envelope.goalAmount | currency:'USD':'symbol':'1.2-2' }}</span>
+                                  </div>
+                                  <div class="goal-target-info">
+                                    <mat-icon>schedule</mat-icon>
+                                    <span>
+                                      {{ computedMonthlyForTarget(envelope) | currency:'USD':'symbol':'1.2-2' }}/mo
+                                      &middot;
+                                      {{ monthsUntilTargetDate(envelope) }} months left
+                                    </span>
+                                  </div>
+                                }
                               }
                             </div>
                           }
@@ -1521,6 +1549,17 @@ export class Envelopes implements OnInit {
     }
     if (!envelope.monthlyGoalTarget || envelope.monthlyGoalTarget <= 0) return false;
     return this.monthlyNetSaved(envelope) >= envelope.monthlyGoalTarget;
+  }
+
+  /** Net saved this week = monthly net saved / 4.34 (approximate weekly share) */
+  weeklyNetSaved(envelope: EnvelopeDTO): number {
+    return Math.max(0, this.monthlyNetSaved(envelope) / 4.34);
+  }
+
+  /** Whether the weekly net saved meets or exceeds the weekly goal target */
+  isWeeklyGoalMet(envelope: EnvelopeDTO): boolean {
+    if (!envelope.monthlyGoalTarget || envelope.monthlyGoalTarget <= 0) return false;
+    return this.weeklyNetSaved(envelope) >= envelope.monthlyGoalTarget;
   }
 
   /** Months remaining until the target date for a TARGET goal */

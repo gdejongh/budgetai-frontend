@@ -67,6 +67,10 @@ export interface SavingsGoalDialogData {
             <mat-icon>repeat</mat-icon>
             Monthly
           </mat-button-toggle>
+          <mat-button-toggle value="WEEKLY">
+            <mat-icon>date_range</mat-icon>
+            Weekly
+          </mat-button-toggle>
           <mat-button-toggle value="TARGET">
             <mat-icon>flag</mat-icon>
             Target Amount
@@ -94,6 +98,31 @@ export interface SavingsGoalDialogData {
                 <mat-error>Must be greater than $0</mat-error>
               }
               <mat-hint>How much you want to save each month</mat-hint>
+            </mat-form-field>
+          </form>
+        }
+
+        @if (goalType() === 'WEEKLY') {
+          <div class="goal-type-description" @slideInUp>
+            <mat-icon>info_outline</mat-icon>
+            <span>Save a fixed amount each week, ongoing.</span>
+          </div>
+
+          <form [formGroup]="weeklyForm" (ngSubmit)="onSubmit()" id="savings-goal-form">
+            <mat-form-field appearance="fill">
+              <mat-label>Weekly Savings Target</mat-label>
+              <span matTextPrefix>$&nbsp;</span>
+              <input matInput type="number" formControlName="weeklyGoalTarget"
+                     placeholder="50.00" step="0.01" min="0.01"
+                     (focus)="onNumericFocus(weeklyForm.controls.weeklyGoalTarget)"
+                     (blur)="onNumericBlur(weeklyForm.controls.weeklyGoalTarget)" />
+              @if (weeklyForm.controls.weeklyGoalTarget.hasError('required') && weeklyForm.controls.weeklyGoalTarget.touched) {
+                <mat-error>Weekly target is required</mat-error>
+              }
+              @if (weeklyForm.controls.weeklyGoalTarget.hasError('min')) {
+                <mat-error>Must be greater than $0</mat-error>
+              }
+              <mat-hint>How much you want to save each week</mat-hint>
             </mat-form-field>
           </form>
         }
@@ -338,8 +367,8 @@ export class SavingsGoalDialog {
 
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
-  protected readonly goalType = signal<'MONTHLY' | 'TARGET'>(
-    (this.data.envelope.goalType as 'MONTHLY' | 'TARGET') ?? 'MONTHLY'
+  protected readonly goalType = signal<'MONTHLY' | 'WEEKLY' | 'TARGET'>(
+    (this.data.envelope.goalType as 'MONTHLY' | 'WEEKLY' | 'TARGET') ?? 'MONTHLY'
   );
 
   protected readonly isEditing = computed(() =>
@@ -350,6 +379,14 @@ export class SavingsGoalDialog {
   protected readonly monthlyForm = this.fb.nonNullable.group({
     monthlyGoalTarget: [
       this.data.envelope.goalType === 'MONTHLY' ? (this.data.envelope.monthlyGoalTarget ?? 0) : 0,
+      [Validators.required, Validators.min(0.01)],
+    ],
+  });
+
+  // Form for WEEKLY goal type (stores target in monthlyGoalTarget on the backend)
+  protected readonly weeklyForm = this.fb.nonNullable.group({
+    weeklyGoalTarget: [
+      this.data.envelope.goalType === 'WEEKLY' ? (this.data.envelope.monthlyGoalTarget ?? 0) : 0,
       [Validators.required, Validators.min(0.01)],
     ],
   });
@@ -392,9 +429,11 @@ export class SavingsGoalDialog {
   });
 
   isFormInvalid(): boolean {
-    return this.goalType() === 'MONTHLY'
-      ? this.monthlyForm.invalid
-      : this.targetForm.invalid;
+    switch (this.goalType()) {
+      case 'MONTHLY': return this.monthlyForm.invalid;
+      case 'WEEKLY':  return this.weeklyForm.invalid;
+      case 'TARGET':  return this.targetForm.invalid;
+    }
   }
 
   onSubmit(): void {
@@ -406,22 +445,34 @@ export class SavingsGoalDialog {
     const envelope = this.data.envelope;
     let updated: EnvelopeDTO;
 
-    if (this.goalType() === 'MONTHLY') {
-      updated = {
-        ...envelope,
-        goalType: 'MONTHLY',
-        monthlyGoalTarget: this.monthlyForm.value.monthlyGoalTarget!,
-        goalAmount: undefined,
-        goalTargetDate: undefined,
-      };
-    } else {
-      updated = {
-        ...envelope,
-        goalType: 'TARGET',
-        goalAmount: this.targetForm.value.goalAmount!,
-        goalTargetDate: this.targetForm.value.goalTargetDate!,
-        monthlyGoalTarget: undefined,
-      };
+    switch (this.goalType()) {
+      case 'MONTHLY':
+        updated = {
+          ...envelope,
+          goalType: 'MONTHLY',
+          monthlyGoalTarget: this.monthlyForm.value.monthlyGoalTarget!,
+          goalAmount: undefined,
+          goalTargetDate: undefined,
+        };
+        break;
+      case 'WEEKLY':
+        updated = {
+          ...envelope,
+          goalType: 'WEEKLY',
+          monthlyGoalTarget: this.weeklyForm.value.weeklyGoalTarget!,
+          goalAmount: undefined,
+          goalTargetDate: undefined,
+        };
+        break;
+      case 'TARGET':
+        updated = {
+          ...envelope,
+          goalType: 'TARGET',
+          goalAmount: this.targetForm.value.goalAmount!,
+          goalTargetDate: this.targetForm.value.goalTargetDate!,
+          monthlyGoalTarget: undefined,
+        };
+        break;
     }
 
     this.envelopeApi.updateEnvelope(envelope.id!, updated).subscribe({
