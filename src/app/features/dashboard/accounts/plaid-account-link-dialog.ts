@@ -17,6 +17,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { LowerCasePipe } from '@angular/common';
 
 import { PlaidService } from '../../../core/services/plaid.service';
@@ -48,6 +49,7 @@ export interface PlaidAccountLinkDialogData {
     MatIconModule,
     MatProgressSpinnerModule,
     MatRadioModule,
+    MatCheckboxModule,
     LowerCasePipe,
   ],
   animations: [fadeIn, slideInUp],
@@ -71,59 +73,81 @@ export interface PlaidAccountLinkDialogData {
         }
 
         <p class="helper-text">
-          Choose how to connect each account. You can link to an existing account or
-          create a new one.
+          Select the accounts you'd like to import, then choose how to connect each one.
         </p>
+
+        @if (data.plaidAccounts.length >= 3) {
+          <div class="select-all-row">
+            <mat-checkbox
+              [checked]="allSelected()"
+              [indeterminate]="someSelected() && !allSelected()"
+              (change)="toggleAll($event.checked)"
+              aria-label="Select all accounts">
+              {{ allSelected() ? 'Deselect all' : 'Select all' }}
+            </mat-checkbox>
+          </div>
+        }
 
         <div class="account-list">
           @for (plaidAccount of data.plaidAccounts; track plaidAccount.id; let i = $index) {
-            <div class="account-row glass-card" @slideInUp>
-              <div class="account-info">
-                <mat-icon class="account-icon">
-                  {{ plaidAccount.type === 'credit' ? 'credit_card' : 'account_balance' }}
-                </mat-icon>
-                <div>
-                  <span class="account-name">{{ plaidAccount.name }}</span>
-                  <span class="account-detail">
-                    {{ formatAccountType(plaidAccount.type, plaidAccount.subtype) }}
-                    @if (plaidAccount.mask) {
-                      &bull; ••{{ plaidAccount.mask }}
-                    }
-                  </span>
+            <div class="account-row glass-card"
+                 [class.account-deselected]="!accountSelected()[i]"
+                 @slideInUp>
+              <div class="account-header">
+                <mat-checkbox
+                  [checked]="accountSelected()[i]"
+                  (change)="toggleAccount(i, $event.checked)"
+                  [attr.aria-label]="'Include ' + plaidAccount.name">
+                </mat-checkbox>
+                <div class="account-info">
+                  <mat-icon class="account-icon">
+                    {{ plaidAccount.type === 'credit' ? 'credit_card' : 'account_balance' }}
+                  </mat-icon>
+                  <div>
+                    <span class="account-name">{{ plaidAccount.name }}</span>
+                    <span class="account-detail">
+                      {{ formatAccountType(plaidAccount.type, plaidAccount.subtype) }}
+                      @if (plaidAccount.mask) {
+                        &bull; ••{{ plaidAccount.mask }}
+                      }
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div class="link-options">
-                <mat-radio-group [value]="linkModes()[i]"
-                                 (change)="setLinkMode(i, $event.value)"
-                                 [attr.aria-label]="'Link option for ' + plaidAccount.name">
-                  <mat-radio-button value="new">
-                    Create new account
-                  </mat-radio-button>
-                  @if (compatibleAccounts(plaidAccount).length > 0) {
-                    <mat-radio-button value="existing">
-                      Link to existing
+              @if (accountSelected()[i]) {
+                <div class="link-options">
+                  <mat-radio-group [value]="linkModes()[i]"
+                                   (change)="setLinkMode(i, $event.value)"
+                                   [attr.aria-label]="'Link option for ' + plaidAccount.name">
+                    <mat-radio-button value="new">
+                      Create new account
                     </mat-radio-button>
-                  }
-                </mat-radio-group>
+                    @if (compatibleAccounts(plaidAccount).length > 0) {
+                      <mat-radio-button value="existing">
+                        Link to existing
+                      </mat-radio-button>
+                    }
+                  </mat-radio-group>
 
-                @if (linkModes()[i] === 'existing') {
-                  <mat-form-field appearance="fill" class="existing-select">
-                    <mat-label>Select account</mat-label>
-                    <mat-select [value]="selectedAccountIds()[i]"
-                                (selectionChange)="setSelectedAccount(i, $event.value)">
-                      @for (acct of compatibleAccounts(plaidAccount); track acct.id) {
-                        <mat-option [value]="acct.id">
-                          {{ acct.name }}
-                          @if (acct.accountType) {
-                            ({{ acct.accountType | lowercase }})
-                          }
-                        </mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                }
-              </div>
+                  @if (linkModes()[i] === 'existing') {
+                    <mat-form-field appearance="fill" class="existing-select">
+                      <mat-label>Select account</mat-label>
+                      <mat-select [value]="selectedAccountIds()[i]"
+                                  (selectionChange)="setSelectedAccount(i, $event.value)">
+                        @for (acct of compatibleAccounts(plaidAccount); track acct.id) {
+                          <mat-option [value]="acct.id">
+                            {{ acct.name }}
+                            @if (acct.accountType) {
+                              ({{ acct.accountType | lowercase }})
+                            }
+                          </mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  }
+                </div>
+              }
             </div>
           }
         </div>
@@ -140,7 +164,8 @@ export interface PlaidAccountLinkDialogData {
           } @else {
             <ng-container>
               <mat-icon>link</mat-icon>
-              Connect {{ data.plaidAccounts.length === 1 ? 'Account' : 'Accounts' }}
+              Connect {{ selectedCount() === 1 ? 'Account' : 'Accounts' }}
+              ({{ selectedCount() }})
             </ng-container>
           }
         </button>
@@ -199,13 +224,28 @@ export interface PlaidAccountLinkDialogData {
 
     .account-row {
       padding: 1rem 1.25rem;
+      transition: opacity 0.2s ease;
+    }
+
+    .account-deselected {
+      opacity: 0.45;
+    }
+
+    .account-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .select-all-row {
+      margin-bottom: 0.75rem;
+      padding-left: 0.25rem;
     }
 
     .account-info {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      margin-bottom: 0.75rem;
 
       .account-icon {
         color: var(--accent-primary);
@@ -228,7 +268,8 @@ export interface PlaidAccountLinkDialogData {
     }
 
     .link-options {
-      padding-left: 2.25rem;
+      padding-left: 3rem;
+      margin-top: 0.75rem;
 
       mat-radio-group {
         display: flex;
@@ -286,6 +327,11 @@ export class PlaidAccountLinkDialog {
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
 
+  // Per-account: whether the account is selected for import
+  protected readonly accountSelected = signal<boolean[]>(
+    this.data.plaidAccounts.map(() => true)
+  );
+
   // Per-account state: 'new' or 'existing'
   protected readonly linkModes = signal<string[]>(
     this.data.plaidAccounts.map(() => 'new')
@@ -295,6 +341,31 @@ export class PlaidAccountLinkDialog {
   protected readonly selectedAccountIds = signal<(string | null)[]>(
     this.data.plaidAccounts.map(() => null)
   );
+
+  // Derived: how many accounts are selected
+  protected readonly selectedCount = computed(() =>
+    this.accountSelected().filter(Boolean).length
+  );
+
+  protected readonly allSelected = computed(() =>
+    this.accountSelected().every(Boolean)
+  );
+
+  protected readonly someSelected = computed(() =>
+    this.accountSelected().some(Boolean)
+  );
+
+  toggleAccount(index: number, checked: boolean): void {
+    this.accountSelected.update(sel => {
+      const copy = [...sel];
+      copy[index] = checked;
+      return copy;
+    });
+  }
+
+  toggleAll(checked: boolean): void {
+    this.accountSelected.set(this.data.plaidAccounts.map(() => checked));
+  }
 
   setLinkMode(index: number, mode: string): void {
     this.linkModes.update(modes => {
@@ -345,7 +416,14 @@ export class PlaidAccountLinkDialog {
   isValid(): boolean {
     const modes = this.linkModes();
     const selectedIds = this.selectedAccountIds();
+    const selected = this.accountSelected();
+
+    // At least one account must be selected
+    if (!selected.some(Boolean)) return false;
+
     return modes.every((mode, i) => {
+      // Skip validation for deselected accounts
+      if (!selected[i]) return true;
       if (mode === 'new') return true;
       return selectedIds[i] != null;
     });
@@ -357,18 +435,22 @@ export class PlaidAccountLinkDialog {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const accountLinks: PlaidAccountLink[] = this.data.plaidAccounts.map((pa, i) => {
-      const link: PlaidAccountLink = {
-        plaidAccountId: pa.id,
-        accountName: pa.name,
-        accountType: this.mapPlaidType(pa.type, pa.subtype),
-        mask: pa.mask,
-      };
-      if (this.linkModes()[i] === 'existing' && this.selectedAccountIds()[i]) {
-        link.existingBankAccountId = this.selectedAccountIds()[i]!;
-      }
-      return link;
-    });
+    const selected = this.accountSelected();
+    const accountLinks: PlaidAccountLink[] = this.data.plaidAccounts
+      .filter((_, i) => selected[i])
+      .map((pa, _) => {
+        const originalIndex = this.data.plaidAccounts.indexOf(pa);
+        const link: PlaidAccountLink = {
+          plaidAccountId: pa.id,
+          accountName: pa.name,
+          accountType: this.mapPlaidType(pa.type, pa.subtype),
+          mask: pa.mask,
+        };
+        if (this.linkModes()[originalIndex] === 'existing' && this.selectedAccountIds()[originalIndex]) {
+          link.existingBankAccountId = this.selectedAccountIds()[originalIndex]!;
+        }
+        return link;
+      });
 
     const request: ExchangeTokenRequest = {
       publicToken: this.data.publicToken,

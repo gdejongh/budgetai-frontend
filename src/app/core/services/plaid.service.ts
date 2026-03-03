@@ -46,10 +46,6 @@ export class PlaidService {
     return this.http.delete<void>(`${this.basePath}/api/plaid/items/${itemId}`);
   }
 
-  syncItem(itemId: string): Observable<void> {
-    return this.http.post<void>(`${this.basePath}/api/plaid/items/${itemId}/sync`, {});
-  }
-
   // ─── Plaid Link JS SDK ──────────────────────────────────────────
 
   /**

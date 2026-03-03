@@ -254,14 +254,6 @@ import {
             @if (!account.manual && account.plaidItemId) {
               <div class="plaid-actions">
                 <button mat-stroked-button
-                        class="sync-btn"
-                        (click)="syncPlaidItem(account.plaidItemId!)"
-                        [disabled]="syncingItemId() === account.plaidItemId"
-                        [attr.aria-label]="'Sync ' + account.name">
-                  <mat-icon [class.spin-icon]="syncingItemId() === account.plaidItemId">sync</mat-icon>
-                  Sync Now
-                </button>
-                <button mat-stroked-button
                         class="disconnect-btn"
                         (click)="disconnectPlaidItem(account.plaidItemId!)"
                         [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
@@ -945,7 +937,6 @@ export class Accounts implements OnInit {
   protected readonly savingId = signal<string | null>(null);
   protected readonly activePreviewId = signal<string | null>(null);
   protected readonly connectingBank = signal(false);
-  protected readonly syncingItemId = signal<string | null>(null);
 
   protected readonly previewPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
@@ -1201,19 +1192,6 @@ export class Accounts implements OnInit {
     } finally {
       this.connectingBank.set(false);
     }
-  }
-
-  syncPlaidItem(plaidItemId: string): void {
-    this.syncingItemId.set(plaidItemId);
-    this.plaidService.syncItem(plaidItemId).subscribe({
-      next: () => {
-        this.dashboardState.refresh();
-        this.syncingItemId.set(null);
-      },
-      error: () => {
-        this.syncingItemId.set(null);
-      },
-    });
   }
 
   disconnectPlaidItem(plaidItemId: string): void {
