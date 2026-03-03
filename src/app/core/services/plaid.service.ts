@@ -20,6 +20,12 @@ export interface PlaidLinkResult {
   metadata: PlaidLinkOnSuccessMetadata;
 }
 
+export interface SyncResult {
+  itemsSynced: number;
+  itemsFailed: number;
+  message: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PlaidService {
   private readonly http = inject(HttpClient);
@@ -44,6 +50,10 @@ export class PlaidService {
 
   unlinkItem(itemId: string): Observable<void> {
     return this.http.delete<void>(`${this.basePath}/api/plaid/items/${itemId}`);
+  }
+
+  syncAccounts(): Observable<SyncResult> {
+    return this.http.post<SyncResult>(`${this.basePath}/api/plaid/sync`, {});
   }
 
   // ─── Plaid Link JS SDK ──────────────────────────────────────────

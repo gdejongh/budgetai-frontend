@@ -59,6 +59,17 @@ import {
           <div class="header-actions">
             <button mat-stroked-button
                     class="connect-bank-btn"
+                    (click)="syncAccounts()"
+                    [disabled]="syncing()">
+              @if (syncing()) {
+                <mat-icon class="spin-icon">sync</mat-icon>
+              } @else {
+                <mat-icon>sync</mat-icon>
+              }
+              Sync
+            </button>
+            <button mat-stroked-button
+                    class="connect-bank-btn"
                     (click)="connectBank()"
                     [disabled]="connectingBank()">
               @if (connectingBank()) {
@@ -1092,6 +1103,7 @@ export class Accounts implements OnInit {
   protected readonly savingId = signal<string | null>(null);
   protected readonly activePreviewId = signal<string | null>(null);
   protected readonly connectingBank = signal(false);
+  protected readonly syncing = signal(false);
 
   protected readonly bankAccountsList = computed(() =>
     this.dashboardState.accounts().filter(a => a.accountType !== 'CREDIT_CARD')
@@ -1368,6 +1380,21 @@ export class Accounts implements OnInit {
       },
       error: (err) => {
         console.error('Failed to disconnect Plaid item:', err);
+      },
+    });
+  }
+
+  syncAccounts(): void {
+    this.syncing.set(true);
+    this.plaidService.syncAccounts().subscribe({
+      next: () => {
+        this.dashboardState.refresh();
+      },
+      error: (err) => {
+        console.error('Failed to sync accounts:', err);
+      },
+      complete: () => {
+        this.syncing.set(false);
       },
     });
   }
