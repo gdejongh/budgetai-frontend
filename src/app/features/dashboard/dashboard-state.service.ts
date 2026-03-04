@@ -123,16 +123,56 @@ export class DashboardStateService {
 
   /**
    * Map of CC account ID → uncovered debt amount.
-   * Uncovered debt = total CC debt − CC Payment envelope allocation.
+   * Uncovered debt = total CC debt − effective CC Payment envelope funding.
+   * Effective funding accounts for overspent source envelopes (YNAB model).
    * A positive number means debt that hasn't been "covered" by envelope spending.
    */
   readonly uncoveredDebtByCard = computed(() => {
     const map = new Map<string, number>();
+    const ccAccountIds = new Set(this.creditCards().map(c => c.id!));
+    const allEnvelopes = this.envelopes();
+    const ccPaymentEnvelopeIds = new Set(
+      allEnvelopes.filter(e => e.envelopeType === 'CC_PAYMENT').map(e => e.id!)
+    );
+    const txns = this.transactions();
+
     for (const cc of this.creditCards()) {
       const debt = cc.currentBalance ?? 0;
       const ccEnv = this.ccPaymentEnvelopes().get(cc.id!);
-      const covered = ccEnv?.allocatedBalance ?? 0;
-      const uncovered = debt - covered;
+      const rawAllocated = ccEnv?.allocatedBalance ?? 0;
+
+      // Compute shortfall from overspent source envelopes
+      let shortfall = 0;
+      if (ccEnv && txns.length > 0) {
+        const totalCCSpendPerEnv: Record<string, number> = {};
+        const thisCardSpendPerEnv: Record<string, number> = {};
+
+        for (const txn of txns) {
+          if (!txn.bankAccountId || !txn.envelopeId) continue;
+          if (!ccAccountIds.has(txn.bankAccountId)) continue;
+          if (txn.amount >= 0) continue;
+          if (ccPaymentEnvelopeIds.has(txn.envelopeId)) continue;
+
+          const absAmt = Math.abs(txn.amount);
+          totalCCSpendPerEnv[txn.envelopeId] = (totalCCSpendPerEnv[txn.envelopeId] ?? 0) + absAmt;
+          if (txn.bankAccountId === cc.id) {
+            thisCardSpendPerEnv[txn.envelopeId] = (thisCardSpendPerEnv[txn.envelopeId] ?? 0) + absAmt;
+          }
+        }
+
+        for (const [envId, thisCardSpend] of Object.entries(thisCardSpendPerEnv)) {
+          if (thisCardSpend <= 0) continue;
+          const sourceEnv = allEnvelopes.find(e => e.id === envId);
+          if (!sourceEnv) continue;
+          const allCCSpend = totalCCSpendPerEnv[envId] ?? thisCardSpend;
+          const envShortfall = Math.max(0, allCCSpend - (sourceEnv.allocatedBalance ?? 0));
+          if (envShortfall <= 0) continue;
+          shortfall += envShortfall * (thisCardSpend / allCCSpend);
+        }
+      }
+
+      const effective = rawAllocated - shortfall;
+      const uncovered = debt - effective;
       if (uncovered > 0) {
         map.set(cc.id!, uncovered);
       }

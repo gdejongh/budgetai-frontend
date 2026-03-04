@@ -297,7 +297,7 @@ import {
                               <span class="finance-value"
                                     [class.remaining-positive]="!isEnvelopeUnhealthy(envelope)"
                                     [class.remaining-negative]="isEnvelopeUnhealthy(envelope)">
-                                {{ remainingForEnvelope(envelope.id!) | currency:'USD':'symbol':'1.2-2' }}
+                                {{ ccAvailableForPayment(envelope) | currency:'USD':'symbol':'1.2-2' }}
                               </span>
                             </div>
                           </div>
@@ -1477,8 +1477,8 @@ export class Envelopes implements OnInit {
     if (envelope.envelopeType === 'CC_PAYMENT' && envelope.linkedAccountId) {
       const card = this.dashboardState.creditCards().find(c => c.id === envelope.linkedAccountId);
       const debt = card?.currentBalance ?? 0;
-      const allocated = envelope.allocatedBalance ?? 0;
-      return debt > allocated;
+      const effective = this.ccEffectiveFunding(envelope);
+      return debt > effective;
     }
     return this.remainingForEnvelope(envelope.id!) < 0;
   }
@@ -1490,12 +1490,12 @@ export class Envelopes implements OnInit {
     return card?.currentBalance ?? 0;
   }
 
-  /** Coverage percent: how much of the card's debt is covered by the all-time allocation. */
+  /** Coverage percent: how much of the card's debt is covered by effective funding. */
   ccCoveragePercent(envelope: EnvelopeDTO): number {
     const debt = this.cardBalanceForEnvelope(envelope);
     if (debt <= 0) return 100;
-    const allocated = envelope.allocatedBalance ?? 0;
-    return Math.max(0, Math.min(100, Math.round((allocated / debt) * 100)));
+    const effective = this.ccEffectiveFunding(envelope);
+    return Math.max(0, Math.min(100, Math.round((effective / debt) * 100)));
   }
 
   /** Total credit card debt across all CC Payment envelopes in a category. */
@@ -1504,10 +1504,78 @@ export class Envelopes implements OnInit {
       .reduce((sum, e) => sum + this.cardBalanceForEnvelope(e), 0);
   }
 
-  /** Total funded (all-time allocatedBalance) across all CC Payment envelopes in a category. */
+  /** Total effective funding across all CC Payment envelopes in a category. */
   ccCategoryTotalFunded(categoryId: string): number {
     return this.envelopesForCategory(categoryId)
-      .reduce((sum, e) => sum + (e.allocatedBalance ?? 0), 0);
+      .reduce((sum, e) => sum + this.ccEffectiveFunding(e), 0);
+  }
+
+  /**
+   * Compute effective funding for a CC Payment envelope, accounting for
+   * overspent source envelopes.
+   *
+   * When a CC purchase is assigned to a regular envelope, the backend auto-moves
+   * the full amount to the CC Payment envelope's allocation. If the source
+   * envelope is later reduced (or was never fully funded), the raw
+   * `allocatedBalance` overstates backed funding.
+   *
+   * CC spending gets priority over cash spending (YNAB model):
+   * shortfall = max(0, ccSpendFromEnvelope - envelope.allocatedBalance)
+   */
+  ccEffectiveFunding(envelope: EnvelopeDTO): number {
+    const allocated = envelope.allocatedBalance ?? 0;
+    if (!envelope.linkedAccountId || envelope.envelopeType !== 'CC_PAYMENT') return allocated;
+
+    const ccAccountId = envelope.linkedAccountId;
+    const transactions = this.dashboardState.transactions();
+    if (transactions.length === 0) return allocated;
+
+    const allEnvelopes = this.dashboardState.envelopes();
+    const ccAccountIds = new Set(this.dashboardState.creditCards().map(c => c.id!));
+    const ccPaymentEnvelopeIds = new Set(
+      allEnvelopes.filter(e => e.envelopeType === 'CC_PAYMENT').map(e => e.id!)
+    );
+
+    // Group CC purchase transactions by source envelope
+    const totalCCSpendPerEnv: Record<string, number> = {};
+    const thisCardSpendPerEnv: Record<string, number> = {};
+
+    for (const txn of transactions) {
+      if (!txn.bankAccountId || !txn.envelopeId) continue;
+      if (!ccAccountIds.has(txn.bankAccountId)) continue;
+      if (txn.amount >= 0) continue; // purchases only (negative)
+      if (ccPaymentEnvelopeIds.has(txn.envelopeId)) continue;
+
+      const absAmt = Math.abs(txn.amount);
+      totalCCSpendPerEnv[txn.envelopeId] = (totalCCSpendPerEnv[txn.envelopeId] ?? 0) + absAmt;
+      if (txn.bankAccountId === ccAccountId) {
+        thisCardSpendPerEnv[txn.envelopeId] = (thisCardSpendPerEnv[txn.envelopeId] ?? 0) + absAmt;
+      }
+    }
+
+    // Compute shortfall from overspent source envelopes
+    let totalShortfall = 0;
+    for (const [envId, thisCardSpend] of Object.entries(thisCardSpendPerEnv)) {
+      if (thisCardSpend <= 0) continue;
+      const sourceEnv = allEnvelopes.find(e => e.id === envId);
+      if (!sourceEnv) continue;
+
+      const allCCSpend = totalCCSpendPerEnv[envId] ?? thisCardSpend;
+      const envShortfall = Math.max(0, allCCSpend - (sourceEnv.allocatedBalance ?? 0));
+      if (envShortfall <= 0) continue;
+
+      const proportion = thisCardSpend / allCCSpend;
+      totalShortfall += envShortfall * proportion;
+    }
+
+    return allocated - totalShortfall;
+  }
+
+  /** Available for payment: effective funding minus total spent for a CC Payment envelope. */
+  ccAvailableForPayment(envelope: EnvelopeDTO): number {
+    const effective = this.ccEffectiveFunding(envelope);
+    const spent = this.totalSpentMap()[envelope.id!] ?? 0;
+    return effective - spent;
   }
 
   txnCountForEnvelope(envelope: EnvelopeDTO): number {
