@@ -37,7 +37,7 @@ import { fadeIn } from '../../animations/route-animations';
                 <mat-icon>{{ txn.amount > 0 ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
               </div>
               <div class="preview-item-details">
-                <span class="preview-item-desc">{{ txn.description || 'Untitled' }}</span>
+                <span class="preview-item-desc">{{ (!txn.transactionType || txn.transactionType === 'STANDARD') && txn.merchantName ? txn.merchantName : (txn.description || 'Untitled') }}</span>
                 <span class="preview-item-date">{{ txn.transactionDate }}</span>
               </div>
               <span class="preview-item-amount"

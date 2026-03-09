@@ -190,7 +190,7 @@ type SortDirection = 'asc' | 'desc';
                     (keydown.enter)="openEditDialog($event, transaction)">
                   <td class="col-description">
                     <div class="description-cell">
-                      @if (transaction.merchantName) {
+                      @if (transaction.merchantName && (!transaction.transactionType || transaction.transactionType === 'STANDARD')) {
                         <span class="cell-merchant">{{ transaction.merchantName }}</span>
                         @if (transaction.description && transaction.description !== transaction.merchantName) {
                           <span class="cell-description">{{ transaction.description }}</span>
