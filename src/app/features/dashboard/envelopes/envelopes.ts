@@ -28,6 +28,7 @@ import { CreateEnvelopeDialog, CreateEnvelopeDialogData } from './create-envelop
 import { CreateCategoryDialog } from './create-category-dialog';
 import { SavingsGoalDialog, SavingsGoalDialogData } from './savings-goal-dialog';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
+import { evaluateMathExpression } from '../../../shared/utils/math-expression';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
 import { UnallocatedBanner } from '../../../shared/components/unallocated-banner/unallocated-banner';
@@ -280,15 +281,19 @@ import {
                                   <div class="allocated-input-wrapper">
                                     <input [id]="'balance-' + envelope.id"
                                            class="inline-input balance-input editable-highlight"
-                                           type="number"
-                                           step="0.01"
-                                           min="0"
+                                           type="text"
+                                           inputmode="decimal"
                                            [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
                                            aria-label="Allocated balance"
                                            title="Edit allocated amount" />
-                                    <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
+                                    <div class="math-operator-buttons">
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '+')" tabindex="-1" aria-label="Add">+</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '-')" tabindex="-1" aria-label="Subtract">&minus;</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '*')" tabindex="-1" aria-label="Multiply">&times;</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '/')" tabindex="-1" aria-label="Divide">&divide;</button>
+                                    </div>
                                   </div>
                                 </div>
                             </div>
@@ -337,15 +342,19 @@ import {
                                   <div class="allocated-input-wrapper">
                                     <input [id]="'balance-' + envelope.id"
                                            class="inline-input balance-input editable-highlight"
-                                           type="number"
-                                           step="0.01"
-                                           min="0"
+                                           type="text"
+                                           inputmode="decimal"
                                            [value]="monthlyAllocationForEnvelope(envelope.id!)"
                                            (blur)="onBalanceBlur($event, envelope)"
                                            (keydown.enter)="blurTarget($event)"
                                            aria-label="Allocated balance"
                                            title="Edit allocated amount" />
-                                    <mat-icon class="edit-icon" aria-hidden="true" title="Edit">edit</mat-icon>
+                                    <div class="math-operator-buttons">
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '+')" tabindex="-1" aria-label="Add">+</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '-')" tabindex="-1" aria-label="Subtract">&minus;</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '*')" tabindex="-1" aria-label="Multiply">&times;</button>
+                                      <button type="button" class="op-btn" (mousedown)="insertOperator($event, '/')" tabindex="-1" aria-label="Divide">&divide;</button>
+                                    </div>
                                   </div>
                                 </div>
                             </div>
@@ -534,17 +543,38 @@ import {
           background: rgba(129,140,248,0.16);
           border-color: var(--accent-secondary, #818cf8);
         }
-        .edit-icon {
-          font-size: 1rem;
-          margin-left: 0.3rem;
-          color: var(--accent-secondary, #818cf8);
-          opacity: 0.7;
-          cursor: pointer;
-          transition: opacity 0.2s;
+        .math-operator-buttons {
+          display: none;
+          margin-left: 0.25rem;
+          gap: 2px;
         }
-        .allocated-input-wrapper:hover .edit-icon,
-        .allocated-input-wrapper:focus-within .edit-icon {
-          opacity: 1;
+        .allocated-input-wrapper:focus-within .math-operator-buttons {
+          display: flex;
+        }
+        .op-btn {
+          width: 1.5rem;
+          height: 1.5rem;
+          padding: 0;
+          border: 1px solid var(--accent-secondary, #818cf8);
+          border-radius: 4px;
+          background: rgba(129,140,248,0.1);
+          color: var(--accent-secondary, #818cf8);
+          font-size: 0.85rem;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s, transform 0.1s;
+          line-height: 1;
+        }
+        .op-btn:hover {
+          background: rgba(129,140,248,0.25);
+          transform: scale(1.1);
+        }
+        .op-btn:active {
+          background: rgba(129,140,248,0.35);
+          transform: scale(0.95);
         }
     .page-header {
       margin-bottom: 2rem;
@@ -1798,12 +1828,12 @@ export class Envelopes implements OnInit {
     this.saveEnvelope(envelope, updated, input);
   }
 
-  /** Auto-save monthly allocation on blur */
+  /** Auto-save monthly allocation on blur — supports math expressions (e.g. "5+10" → 15) */
   onBalanceBlur(event: Event, envelope: EnvelopeDTO): void {
     const input = event.target as HTMLInputElement;
-    const newBalance = parseFloat(input.value);
+    const newBalance = evaluateMathExpression(input.value);
     const currentAllocation = this.monthlyAllocationForEnvelope(envelope.id!);
-    if (isNaN(newBalance) || newBalance === currentAllocation) {
+    if (newBalance === null || newBalance === currentAllocation) {
       input.value = String(currentAllocation);
       return;
     }
@@ -1813,6 +1843,9 @@ export class Envelopes implements OnInit {
       this.showError(null, 'Allocation amount cannot be negative');
       return;
     }
+
+    // Show the evaluated result in the input (e.g. "5+10" → "15")
+    input.value = String(newBalance);
 
     const id = envelope.id!;
     const month = this.dashboardState.viewedMonth();
@@ -1841,6 +1874,23 @@ export class Envelopes implements OnInit {
   /** Blur the input on Enter key */
   blurTarget(event: Event): void {
     (event.target as HTMLInputElement).blur();
+  }
+
+  /** Insert an arithmetic operator into the nearest allocation input */
+  insertOperator(event: MouseEvent, operator: string): void {
+    event.preventDefault(); // prevent blur on the input
+    const btn = event.target as HTMLElement;
+    const wrapper = btn.closest('.allocated-input-wrapper');
+    const input = wrapper?.querySelector('input') as HTMLInputElement | null;
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    input.value = before + operator + after;
+    input.focus();
+    const cursor = start + operator.length;
+    input.setSelectionRange(cursor, cursor);
   }
 
   deleteEnvelope(id: string): void {
