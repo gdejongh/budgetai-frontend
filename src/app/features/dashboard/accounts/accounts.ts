@@ -20,8 +20,6 @@ import { DashboardStateService } from '../dashboard-state.service';
 import { CreateAccountDialog } from './create-account-dialog';
 import { CCPaymentDialog } from './cc-payment-dialog';
 import { ReconcileBalanceDialog } from './reconcile-balance-dialog';
-import { PlaidAccountLinkDialog, PlaidAccountLinkDialogData } from './plaid-account-link-dialog';
-import { PlaidService } from '../../../core/services/plaid.service';
 import { TransactionPreview } from '../../../shared/components/transaction-preview/transaction-preview';
 import { Counter } from '../../../shared/components/counter/counter';
 import { SkeletonCard } from '../../../shared/components/skeleton-card/skeleton-card';
@@ -57,17 +55,6 @@ import {
         </div>
         @if (!dashboardState.loading() && dashboardState.accounts().length > 0) {
           <div class="header-actions">
-            <button mat-stroked-button
-                    class="connect-bank-btn"
-                    (click)="connectBank()"
-                    [disabled]="connectingBank()">
-              @if (connectingBank()) {
-                <mat-icon class="spin-icon">sync</mat-icon>
-              } @else {
-                <mat-icon>link</mat-icon>
-              }
-              Connect Bank
-            </button>
             <div class="total-balance glass-card glow-card">
               <span class="total-label">Total Balance</span>
               <span class="total-value glow-text">
@@ -89,14 +76,8 @@ import {
         <h2>No accounts yet</h2>
         <p>Add your first bank account to start tracking your finances.</p>
         <div class="empty-state-actions">
-          <button mat-flat-button color="primary" class="add-first-btn" (click)="connectBank()" [disabled]="connectingBank()">
-            @if (connectingBank()) {
-              <mat-icon class="spin-icon">sync</mat-icon>
-            }
-            Connect Your Bank
-          </button>
-          <button mat-stroked-button class="add-manual-btn" (click)="openCreateDialog()">
-            Add Manually
+          <button mat-flat-button color="primary" class="add-first-btn" (click)="openCreateDialog()">
+            Add Account
           </button>
         </div>
       </div>
@@ -132,12 +113,6 @@ import {
                     @if (account.accountType === 'SAVINGS') {
                       <span class="account-type-badge savings-badge">Savings</span>
                     }
-                    @if (!account.manual) {
-                      <span class="account-type-badge linked-badge" title="Linked via Plaid">
-                        <mat-icon class="badge-icon">link</mat-icon>
-                        Linked
-                      </span>
-                    }
                   </div>
                   <button mat-icon-button class="delete-btn"
                           (click)="deleteAccount(account.id!)"
@@ -156,33 +131,24 @@ import {
                          aria-label="Account name" />
                 </div>
 
-                @if (!account.manual && account.institutionName) {
+                @if (account.institutionName) {
                   <span class="institution-label">
                     {{ account.institutionName }}
                     @if (account.accountMask) { &bull; ••{{ account.accountMask }} }
                   </span>
                 }
 
-                @if (!account.manual) {
-                  <div class="balance-field plaid-balance-display"
-                       [attr.aria-label]="'Current balance (synced)'"
-                       title="Balance is synced from your bank via Plaid">
-                    <span class="currency-prefix">$</span>
-                    <span class="balance-readonly">{{ account.currentBalance | currency:'USD':'':'1.2-2' }}</span>
-                  </div>
-                } @else {
-                  <div class="editable-field balance-field">
-                    <label class="sr-only" [attr.for]="'acct-balance-' + account.id">Current balance</label>
-                    <span class="currency-prefix">$</span>
-                    <input [id]="'acct-balance-' + account.id"
-                           class="inline-input balance-input" type="number"
-                           step="0.01" min="0"
-                           [value]="account.currentBalance"
-                           (blur)="onBalanceBlur($event, account)"
-                           (keydown.enter)="blurTarget($event)"
-                           aria-label="Current balance" />
-                  </div>
-                }
+                <div class="editable-field balance-field">
+                  <label class="sr-only" [attr.for]="'acct-balance-' + account.id">Current balance</label>
+                  <span class="currency-prefix">$</span>
+                  <input [id]="'acct-balance-' + account.id"
+                         class="inline-input balance-input" type="number"
+                         step="0.01" min="0"
+                         [value]="account.currentBalance"
+                         (blur)="onBalanceBlur($event, account)"
+                         (keydown.enter)="blurTarget($event)"
+                         aria-label="Current balance" />
+                </div>
 
                 @if (account.createdAt) {
                   <span class="card-date">Added {{ account.createdAt | date: 'mediumDate' }}</span>
@@ -200,15 +166,6 @@ import {
                   <mat-icon class="link-arrow">chevron_right</mat-icon>
                 </button>
 
-                @if (!account.manual && account.plaidItemId) {
-                  <div class="plaid-actions">
-                    <button mat-stroked-button class="disconnect-btn"
-                            (click)="disconnectPlaidItem(account.plaidItemId!)"
-                            [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
-                      <mat-icon>link_off</mat-icon> Disconnect
-                    </button>
-                  </div>
-                }
               </div>
 
               <ng-template cdkConnectedOverlay
@@ -254,12 +211,6 @@ import {
                   </div>
                   <div class="card-badges">
                     <span class="account-type-badge cc-badge">Credit Card</span>
-                    @if (!account.manual) {
-                      <span class="account-type-badge linked-badge" title="Linked via Plaid">
-                        <mat-icon class="badge-icon">link</mat-icon>
-                        Linked
-                      </span>
-                    }
                   </div>
                   <button mat-icon-button class="delete-btn"
                           (click)="deleteAccount(account.id!)"
@@ -278,7 +229,7 @@ import {
                          aria-label="Account name" />
                 </div>
 
-                @if (!account.manual && account.institutionName) {
+                @if (account.institutionName) {
                   <span class="institution-label">
                     {{ account.institutionName }}
                     @if (account.accountMask) { &bull; ••{{ account.accountMask }} }
@@ -335,16 +286,6 @@ import {
                         [attr.aria-label]="'Adjust balance for ' + account.name">
                   <mat-icon>tune</mat-icon> Adjust Balance
                 </button>
-
-                @if (!account.manual && account.plaidItemId) {
-                  <div class="plaid-actions">
-                    <button mat-stroked-button class="disconnect-btn"
-                            (click)="disconnectPlaidItem(account.plaidItemId!)"
-                            [attr.aria-label]="'Disconnect ' + account.name + ' from Plaid'">
-                      <mat-icon>link_off</mat-icon> Disconnect
-                    </button>
-                  </div>
-                }
               </div>
 
               <ng-template cdkConnectedOverlay
@@ -957,30 +898,12 @@ import {
       justify-content: center;
     }
 
-    /* ─── Plaid / Connect Bank styles ───────────────────────────── */
+    /* ─── Header & Actions styles ─────────────────────────────── */
 
     .header-actions {
       display: flex;
       align-items: center;
       gap: 1rem;
-    }
-
-    .connect-bank-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--accent-primary);
-      border-color: rgba(34, 211, 238, 0.3);
-
-      mat-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
-      }
-
-      &:hover:not(:disabled) {
-        background: rgba(34, 211, 238, 0.08);
-      }
     }
 
     .empty-state-actions {
@@ -990,90 +913,12 @@ import {
       align-items: center;
     }
 
-    .add-manual-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--text-secondary);
-
-      mat-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
-      }
-    }
-
-    .linked-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.2rem;
-      background: rgba(34, 211, 238, 0.12);
-      color: var(--accent-primary);
-
-      .badge-icon {
-        font-size: 12px;
-        width: 12px;
-        height: 12px;
-      }
-    }
-
     .institution-label {
       display: block;
       font-size: 0.75rem;
       color: var(--text-muted);
       padding-left: 0.5rem;
       margin-bottom: 0.25rem;
-    }
-
-    .plaid-balance-display {
-      display: flex;
-      align-items: center;
-      margin-bottom: 0.5rem;
-      cursor: default;
-    }
-
-    .plaid-actions {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-    }
-
-    .sync-btn {
-      flex: 1;
-      color: var(--accent-primary);
-      border-color: rgba(34, 211, 238, 0.25);
-      font-size: 0.8rem;
-
-      mat-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
-        margin-right: 0.25rem;
-      }
-
-      &:hover:not(:disabled) {
-        background: rgba(34, 211, 238, 0.06);
-      }
-    }
-
-    .disconnect-btn {
-      flex: 1;
-      color: var(--text-muted);
-      border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
-      font-size: 0.8rem;
-
-      mat-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
-        margin-right: 0.25rem;
-      }
-
-      &:hover {
-        color: var(--danger);
-        border-color: rgba(239, 68, 68, 0.3);
-        background: rgba(239, 68, 68, 0.04);
-      }
     }
 
     .spin-icon {
@@ -1085,13 +930,11 @@ export class Accounts implements OnInit {
   protected readonly dashboardState = inject(DashboardStateService);
   private readonly dialog = inject(MatDialog);
   private readonly bankAccountApi = inject(BankAccountControllerService);
-  private readonly plaidService = inject(PlaidService);
   private readonly router = inject(Router);
 
   protected readonly deletingId = signal<string | null>(null);
   protected readonly savingId = signal<string | null>(null);
   protected readonly activePreviewId = signal<string | null>(null);
-  protected readonly connectingBank = signal(false);
 
   protected readonly bankAccountsList = computed(() =>
     this.dashboardState.accounts().filter(a => a.accountType !== 'CREDIT_CARD')
@@ -1323,53 +1166,6 @@ export class Accounts implements OnInit {
 
   navigateToEnvelopes(): void {
     this.router.navigate(['/dashboard/envelopes']);
-  }
-
-  // ─── Plaid integration ──────────────────────────────────────────
-
-  async connectBank(): Promise<void> {
-    this.connectingBank.set(true);
-    try {
-      const result = await this.plaidService.openPlaidLink();
-
-      // Open the account-mapping dialog
-      const dialogRef = this.dialog.open(PlaidAccountLinkDialog, {
-        width: '520px',
-        panelClass: 'dark-dialog',
-        disableClose: true,
-        data: {
-          publicToken: result.publicToken,
-          institutionId: result.metadata.institution.institution_id,
-          institutionName: result.metadata.institution.name,
-          plaidAccounts: result.metadata.accounts,
-        } satisfies PlaidAccountLinkDialogData,
-      });
-
-      dialogRef.afterClosed().subscribe((linked) => {
-        if (linked) {
-          // DashboardStateService.refresh() is already called inside the dialog
-        }
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '';
-      // Don't show an error if the user just dismissed the modal
-      if (message !== 'PLAID_LINK_DISMISSED') {
-        console.error('Plaid Link error:', err);
-      }
-    } finally {
-      this.connectingBank.set(false);
-    }
-  }
-
-  disconnectPlaidItem(plaidItemId: string): void {
-    this.plaidService.unlinkItem(plaidItemId).subscribe({
-      next: () => {
-        this.dashboardState.refresh();
-      },
-      error: (err) => {
-        console.error('Failed to disconnect Plaid item:', err);
-      },
-    });
   }
 
 

@@ -93,7 +93,9 @@ export class DashboardStateService {
     // CC debt coverage is already represented by the CC Payment envelope allocations
     // included in totalEnvelopeAllocation, so subtracting CC debt here would double-count.
     const totalCash = this.bankAccounts().reduce((sum, a) => sum + (a.currentBalance ?? 0), 0);
-    return totalCash - this.totalEnvelopeAllocation() - this.totalAllTimeEnvelopeSpent();
+    const raw = totalCash - this.totalEnvelopeAllocation() - this.totalAllTimeEnvelopeSpent();
+    // Round to cents to avoid floating-point artifacts that cause incorrect styling
+    return Math.round(raw * 100) / 100;
   });
 
   readonly accountCount = computed(() => this.accounts().length);
