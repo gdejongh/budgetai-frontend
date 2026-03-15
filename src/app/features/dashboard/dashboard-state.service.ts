@@ -55,6 +55,14 @@ export class DashboardStateService {
       }
       map.get(catId)!.push(envelope);
     }
+    // Sort envelopes within each category by displayOrder
+    for (const [, envelopes] of map) {
+      envelopes.sort((a, b) => {
+        const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        return (a.name ?? '').localeCompare(b.name ?? '');
+      });
+    }
     return map;
   });
 
@@ -102,13 +110,15 @@ export class DashboardStateService {
   readonly envelopeCount = computed(() => this.envelopes().length);
   readonly transactionCount = computed(() => this.transactions().length);
 
-  /** Envelope categories sorted with CC_PAYMENT always first. */
+  /** Envelope categories sorted with CC_PAYMENT always first, then by displayOrder. */
   readonly sortedEnvelopeCategories = computed(() => {
     const cats = this.envelopeCategories();
     return [...cats].sort((a, b) => {
       if (a.categoryType === 'CC_PAYMENT' && b.categoryType !== 'CC_PAYMENT') return -1;
       if (a.categoryType !== 'CC_PAYMENT' && b.categoryType === 'CC_PAYMENT') return 1;
-      return 0;
+      const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return (a.name ?? '').localeCompare(b.name ?? '');
     });
   });
 

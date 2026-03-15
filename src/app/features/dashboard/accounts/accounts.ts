@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkDragDrop, CdkDragSortEvent, CdkDrag, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -41,6 +42,8 @@ import {
     MatDialogModule,
     CdkConnectedOverlay,
     CdkOverlayOrigin,
+    CdkDrag,
+    CdkDropList,
     Counter,
     SkeletonCard,
     TransactionPreview,
@@ -97,10 +100,20 @@ import {
             <p>No bank accounts yet. Add a checking or savings account to get started.</p>
           </div>
         } @else {
-          <div class="accounts-grid" @staggerFadeIn>
+          <div class="accounts-grid" cdkDropList
+               cdkDropListOrientation="mixed"
+               [cdkDropListData]="'bank-accounts'"
+               (cdkDropListDropped)="onBankAccountDrop($event)"
+               (cdkDropListSorted)="onListSorted($event)"
+               @staggerFadeIn>
             @for (account of bankAccountsList(); track account.id) {
-              <div class="account-card glass-card neon-border">
+              <div class="account-card glass-card neon-border" cdkDrag
+                   [attr.data-flip-id]="account.id"
+                   (cdkDragStarted)="onAccountDragStarted()"
+                   (cdkDragEnded)="onAccountDragEnded()"
+              >
                 <div class="card-header">
+                  <mat-icon class="drag-handle">drag_indicator</mat-icon>
                   <div class="card-icon"
                        [class.savings-icon]="account.accountType === 'SAVINGS'">
                     @if (account.accountType === 'SAVINGS') {
@@ -202,10 +215,20 @@ import {
             <p>No credit cards yet. Add a credit card to track your spending and debt.</p>
           </div>
         } @else {
-          <div class="accounts-grid" @staggerFadeIn>
+          <div class="accounts-grid" cdkDropList
+               cdkDropListOrientation="mixed"
+               [cdkDropListData]="'credit-cards'"
+               (cdkDropListDropped)="onCreditCardDrop($event)"
+               (cdkDropListSorted)="onListSorted($event)"
+               @staggerFadeIn>
             @for (account of creditCardsList(); track account.id) {
-              <div class="account-card glass-card neon-border credit-card-card">
+              <div class="account-card glass-card neon-border credit-card-card" cdkDrag
+                   [attr.data-flip-id]="account.id"
+                   (cdkDragStarted)="onAccountDragStarted()"
+                   (cdkDragEnded)="onAccountDragEnded()"
+              >
                 <div class="card-header">
+                  <mat-icon class="drag-handle">drag_indicator</mat-icon>
                   <div class="card-icon cc-icon">
                     <mat-icon>credit_card</mat-icon>
                   </div>
@@ -334,6 +357,26 @@ import {
     }
   `,
   styles: `
+    /* Drag-and-drop */
+    .drag-handle {
+      cursor: grab;
+      color: var(--text-tertiary, #6b7280);
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      opacity: 0.5;
+      transition: opacity 0.2s, color 0.2s;
+      flex-shrink: 0;
+      margin-right: 0.25rem;
+    }
+    .drag-handle:hover {
+      opacity: 1;
+      color: var(--accent-secondary, #818cf8);
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .account-card { cursor: grab; }
+    .account-card:active { cursor: grabbing; }
+
     .page-header {
       margin-bottom: 2rem;
 
@@ -452,10 +495,11 @@ import {
     .account-card {
       padding: 1.5rem;
       position: relative;
-      transition: transform var(--transition-fast), box-shadow var(--transition-base);
+      transition: box-shadow var(--transition-base);
 
-      &:hover {
+      &:hover:not(.cdk-drag-preview) {
         transform: translateY(-2px);
+        transition: transform var(--transition-fast), box-shadow var(--transition-base);
       }
     }
 
@@ -937,11 +981,23 @@ export class Accounts implements OnInit {
   protected readonly activePreviewId = signal<string | null>(null);
 
   protected readonly bankAccountsList = computed(() =>
-    this.dashboardState.accounts().filter(a => a.accountType !== 'CREDIT_CARD')
+    this.dashboardState.accounts()
+      .filter(a => a.accountType !== 'CREDIT_CARD')
+      .sort((a, b) => {
+        const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        return (a.name ?? '').localeCompare(b.name ?? '');
+      })
   );
 
   protected readonly creditCardsList = computed(() =>
-    this.dashboardState.accounts().filter(a => a.accountType === 'CREDIT_CARD')
+    this.dashboardState.accounts()
+      .filter(a => a.accountType === 'CREDIT_CARD')
+      .sort((a, b) => {
+        const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        return (a.name ?? '').localeCompare(b.name ?? '');
+      })
   );
 
   protected readonly previewPositions: ConnectedPosition[] = [
@@ -1168,5 +1224,83 @@ export class Accounts implements OnInit {
     this.router.navigate(['/dashboard/envelopes']);
   }
 
+  // ── Drag-and-drop reordering ─────────────────────────────────
 
+  // ── Drag-and-drop reordering ─────────────────────────────────
+
+  private readonly flipPositionCache = new Map<string, DOMRect>();
+
+  onAccountDragStarted(): void {
+    this.captureFlipPositions();
+  }
+
+  onAccountDragEnded(): void {
+    this.flipPositionCache.clear();
+  }
+
+  onListSorted(event: CdkDragSortEvent): void {
+    this.animateFlip(event.container.element.nativeElement);
+  }
+
+  private captureFlipPositions(): void {
+    this.flipPositionCache.clear();
+    document.querySelectorAll<HTMLElement>('[data-flip-id]').forEach(el => {
+      if (!el.classList.contains('cdk-drag-placeholder')) {
+        this.flipPositionCache.set(el.dataset['flipId']!, el.getBoundingClientRect());
+      }
+    });
+  }
+
+  private animateFlip(container: HTMLElement): void {
+    const children = container.querySelectorAll<HTMLElement>('[data-flip-id]');
+    children.forEach(el => {
+      if (el.classList.contains('cdk-drag-placeholder')) return;
+      const id = el.dataset['flipId']!;
+      const oldRect = this.flipPositionCache.get(id);
+      if (!oldRect) return;
+      const newRect = el.getBoundingClientRect();
+      const deltaX = oldRect.left - newRect.left;
+      const deltaY = oldRect.top - newRect.top;
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return;
+
+      el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+      el.style.transition = 'none';
+
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 200ms cubic-bezier(0.25, 0.8, 0.25, 1)';
+        el.style.transform = '';
+        el.addEventListener('transitionend', () => {
+          el.style.transition = '';
+          el.style.transform = '';
+        }, { once: true });
+      });
+    });
+    this.captureFlipPositions();
+  }
+
+  onBankAccountDrop(event: CdkDragDrop<string>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    const accounts = [...this.bankAccountsList()];
+    moveItemInArray(accounts, event.previousIndex, event.currentIndex);
+    const updated = accounts.map((a, i) => ({ ...a, displayOrder: i }));
+    this.dashboardState.accounts.update(all =>
+      all.map(a => updated.find(u => u.id === a.id) ?? a)
+    );
+    for (const acct of updated) {
+      this.bankAccountApi.updateBankAccount(acct.id!, acct).subscribe();
+    }
+  }
+
+  onCreditCardDrop(event: CdkDragDrop<string>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    const cards = [...this.creditCardsList()];
+    moveItemInArray(cards, event.previousIndex, event.currentIndex);
+    const updated = cards.map((c, i) => ({ ...c, displayOrder: i }));
+    this.dashboardState.accounts.update(all =>
+      all.map(a => updated.find(u => u.id === a.id) ?? a)
+    );
+    for (const card of updated) {
+      this.bankAccountApi.updateBankAccount(card.id!, card).subscribe();
+    }
+  }
 }

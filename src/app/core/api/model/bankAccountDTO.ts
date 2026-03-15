@@ -22,5 +22,6 @@ export interface BankAccountDTO {
     manual?: boolean;
     institutionName?: string;
     plaidLinkedAt?: string;
+    displayOrder?: number;
 }
 

@@ -22,5 +22,6 @@ export interface EnvelopeDTO {
     goalTargetDate?: string;
     goalType?: string;
     createdAt?: string;
+    displayOrder?: number;
 }
 

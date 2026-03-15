@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkDragDrop, CdkDragMove, CdkDragSortEvent, CdkDrag, CdkDragHandle, CdkDropList, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -53,6 +54,9 @@ import {
     MatSnackBarModule,
     CdkConnectedOverlay,
     CdkOverlayOrigin,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
     Counter,
     SkeletonCard,
     TransactionPreview,
@@ -115,10 +119,19 @@ import {
           </button>
         </div>
 
-        <div class="categories-list" @staggerFadeIn>
+        <div class="categories-list" cdkDropList
+             [cdkDropListData]="'categories'"
+             (cdkDropListDropped)="onCategoryDrop($event)"
+             @staggerFadeIn>
           @for (category of dashboardState.sortedEnvelopeCategories(); track category.id) {
-            <section class="category-section glass-card neon-border">
+            <section class="category-section glass-card neon-border"
+                     cdkDrag [cdkDragDisabled]="category.categoryType === 'CC_PAYMENT'"
+                     [class.drag-receiving]="receivingCategoryId() === category.id"
+                     [attr.data-category-id]="category.id">
               <div class="category-header" (click)="toggleCategory(category.id!)">
+                @if (category.categoryType !== 'CC_PAYMENT') {
+                  <mat-icon cdkDragHandle class="drag-handle" (click)="$event.stopPropagation()">drag_indicator</mat-icon>
+                }
                 <button class="collapse-toggle" mat-icon-button
                         [attr.aria-expanded]="!isCategoryCollapsed(category.id!)"
                         [attr.aria-label]="'Toggle ' + category.name">
@@ -197,21 +210,48 @@ import {
 
               @if (!isCategoryCollapsed(category.id!)) {
                 @if (envelopesForCategory(category.id!).length === 0) {
-                  <div class="category-empty">
+                  <div class="category-empty"
+                       cdkDropList
+                       cdkDropListOrientation="mixed"
+                       #envelopeList="cdkDropList"
+                       [cdkDropListData]="category.id!"
+                       [cdkDropListConnectedTo]="connectedEnvelopeLists()"
+                       [cdkDropListEnterPredicate]="envelopeEnterPredicate(category)"
+                       (cdkDropListDropped)="onEnvelopeDrop($event)"
+                       (cdkDropListEntered)="onDropListEntered(category.id!)"
+                       (cdkDropListExited)="onDropListExited()">
                     <p>No envelopes in this category yet.</p>
                     <button mat-stroked-button (click)="openCreateEnvelopeDialog(category.id!)">
                       <mat-icon>add</mat-icon> Add Envelope
                     </button>
                   </div>
                 } @else {
-                  <div class="envelopes-grid">
+                  <div class="envelopes-grid"
+                       cdkDropList
+                       cdkDropListOrientation="mixed"
+                       #envelopeList="cdkDropList"
+                       [cdkDropListData]="category.id!"
+                       [cdkDropListConnectedTo]="connectedEnvelopeLists()"
+                       [cdkDropListEnterPredicate]="envelopeEnterPredicate(category)"
+                       (cdkDropListDropped)="onEnvelopeDrop($event)"
+                       (cdkDropListSorted)="onEnvelopeListSorted($event)"
+                       (cdkDropListEntered)="onDropListEntered(category.id!)"
+                       (cdkDropListExited)="onDropListExited()">
                     @for (envelope of envelopesForCategory(category.id!); track envelope.id) {
                       <div
                         class="envelope-card glass-card neon-border"
                         [class.envelope-negative]="isEnvelopeUnhealthy(envelope)"
                         [class.cc-payment-envelope]="envelope.envelopeType === 'CC_PAYMENT'"
+                        cdkDrag [cdkDragDisabled]="envelope.envelopeType === 'CC_PAYMENT'"
+                        [attr.data-flip-id]="envelope.id"
+                        (cdkDragStarted)="onEnvelopeDragStarted()"
+                        (cdkDragMoved)="onEnvelopeDragMoved($event)"
+                        (cdkDragEnded)="onEnvelopeDragEnded()"
                       >
                         <div class="card-header">
+                          @if (envelope.envelopeType !== 'CC_PAYMENT') {
+                            <mat-icon class="drag-handle envelope-drag-handle">drag_indicator</mat-icon>
+                          }
                           <div class="card-icon" [class.cc-payment-icon]="envelope.envelopeType === 'CC_PAYMENT'">
                             <mat-icon>{{ envelope.envelopeType === 'CC_PAYMENT' ? 'credit_card' : 'mail' }}</mat-icon>
                           </div>
@@ -486,6 +526,12 @@ import {
                     }
                   </div>
                 }
+              } @else if (category.categoryType !== 'CC_PAYMENT') {
+                <div class="collapsed-drop-zone"
+                     [class.hover-active]="receivingCategoryId() === category.id">
+                  <mat-icon>arrow_downward</mat-icon>
+                  <span>Hover to expand</span>
+                </div>
               }
             </section>
           }
@@ -529,6 +575,26 @@ import {
     }
   `,
   styles: `
+        /* Drag-and-drop */
+        .drag-handle {
+          cursor: grab;
+          color: var(--text-tertiary, #6b7280);
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+          opacity: 0.5;
+          transition: opacity 0.2s, color 0.2s;
+          flex-shrink: 0;
+        }
+        .drag-handle:hover {
+          opacity: 1;
+          color: var(--accent-secondary, #818cf8);
+        }
+        .drag-handle:active { cursor: grabbing; }
+        .envelope-drag-handle { margin-right: 0.25rem; }
+        .envelope-card { cursor: grab; }
+        .envelope-card:active { cursor: grabbing; }
+
         .allocated-input-wrapper {
           position: relative;
           display: flex;
@@ -678,8 +744,17 @@ import {
     }
 
     .category-section {
+      position: relative;
       padding: 0;
-      overflow: hidden;
+      overflow: visible;
+      transition: border-color 0.2s, box-shadow 0.2s;
+
+      &.drag-receiving {
+        border-color: rgba(34, 211, 238, 0.5);
+        box-shadow:
+          0 0 0 2px rgba(34, 211, 238, 0.2),
+          0 0 20px rgba(34, 211, 238, 0.1);
+      }
     }
 
     .category-header {
@@ -693,6 +768,30 @@ import {
 
       &:hover {
         background: rgba(129, 140, 248, 0.04);
+      }
+    }
+
+    .collapsed-drop-zone {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      border-radius: inherit;
+      background: transparent;
+      color: transparent;
+      font-size: 0.875rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, background 0.2s, border-color 0.2s, color 0.2s;
+
+      &.hover-active {
+        opacity: 1;
+        border: 2px dashed var(--accent-primary, #22d3ee);
+        background: rgba(34, 211, 238, 0.1);
+        color: var(--accent-primary, #22d3ee);
       }
     }
 
@@ -778,10 +877,11 @@ import {
     .envelope-card {
       padding: 1.5rem;
       position: relative;
-      transition: transform var(--transition-fast), box-shadow var(--transition-base);
+      transition: box-shadow var(--transition-base);
 
-      &:hover {
+      &:hover:not(.cdk-drag-preview) {
         transform: translateY(-2px);
+        transition: transform var(--transition-fast), box-shadow var(--transition-base);
       }
         display: flex;
         flex-direction: column;
@@ -1378,6 +1478,14 @@ export class Envelopes implements OnInit {
   protected readonly bannerDismissed = signal(false);
   protected readonly activePreviewId = signal<string | null>(null);
   protected readonly collapsedCategories = signal(new Set<string>());
+  protected readonly isDraggingEnvelope = signal(false);
+  protected readonly receivingCategoryId = signal<string | null>(null);
+  private readonly flipPositionCache = new Map<string, DOMRect>();
+  private expandCollapsedTimer: ReturnType<typeof setTimeout> | null = null;
+  private expandingCategoryId: string | null = null;
+
+  protected readonly envelopeListRefs = viewChildren<CdkDropList>('envelopeList');
+  protected readonly connectedEnvelopeLists = computed(() => [...this.envelopeListRefs()]);
 
   protected readonly previewPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
@@ -2002,6 +2110,196 @@ export class Envelopes implements OnInit {
       this.router.navigate(['/dashboard/transactions'], {
         queryParams: { envelopeId: id },
       });
+    }
+  }
+
+  // ── Drag-and-drop reordering ─────────────────────────────────
+
+  /** Predicate: only allow standard envelopes into standard categories */
+  envelopeEnterPredicate(category: EnvelopeCategoryDTO): () => boolean {
+    return () => category.categoryType !== 'CC_PAYMENT';
+  }
+
+  onEnvelopeDragStarted(): void {
+    this.isDraggingEnvelope.set(true);
+    this.captureFlipPositions();
+  }
+
+  onEnvelopeDragEnded(): void {
+    this.isDraggingEnvelope.set(false);
+    this.receivingCategoryId.set(null);
+    this.flipPositionCache.clear();
+    this.clearExpandTimer();
+  }
+
+  onEnvelopeListSorted(event: CdkDragSortEvent): void {
+    this.animateFlip(event.container.element.nativeElement);
+  }
+
+  onDropListEntered(categoryId: string): void {
+    this.receivingCategoryId.set(categoryId);
+  }
+
+  onDropListExited(): void {
+    this.receivingCategoryId.set(null);
+  }
+
+  onCollapsedHoverEnter(categoryId: string): void {
+    if (!this.isDraggingEnvelope()) return;
+    this.receivingCategoryId.set(categoryId);
+    this.expandingCategoryId = categoryId;
+    this.expandCollapsedTimer = setTimeout(() => {
+      this.collapsedCategories.update(set => {
+        const next = new Set(set);
+        next.delete(categoryId);
+        return next;
+      });
+      this.clearExpandTimer();
+    }, 500);
+  }
+
+  onCollapsedHoverLeave(): void {
+    this.receivingCategoryId.set(null);
+    this.clearExpandTimer();
+  }
+
+  onEnvelopeDragMoved(event: CdkDragMove): void {
+    const preview = document.querySelector('.cdk-drag-preview') as HTMLElement | null;
+    if (!preview) return;
+    const dragRect = preview.getBoundingClientRect();
+
+    const collapsedIds = this.collapsedCategories();
+    const sections = document.querySelectorAll<HTMLElement>('[data-category-id]');
+    let overlappingId: string | null = null;
+
+    for (const section of sections) {
+      const catId = section.dataset['categoryId']!;
+      if (!collapsedIds.has(catId)) continue;
+      const sectionRect = section.getBoundingClientRect();
+      if (
+        dragRect.right > sectionRect.left &&
+        dragRect.left < sectionRect.right &&
+        dragRect.bottom > sectionRect.top &&
+        dragRect.top < sectionRect.bottom
+      ) {
+        overlappingId = catId;
+        break;
+      }
+    }
+
+    if (overlappingId !== this.expandingCategoryId) {
+      this.clearExpandTimer();
+      if (overlappingId) {
+        this.onCollapsedHoverEnter(overlappingId);
+      }
+    }
+  }
+
+  private clearExpandTimer(): void {
+    if (this.expandCollapsedTimer) {
+      clearTimeout(this.expandCollapsedTimer);
+      this.expandCollapsedTimer = null;
+    }
+    this.expandingCategoryId = null;
+  }
+
+  private captureFlipPositions(): void {
+    this.flipPositionCache.clear();
+    document.querySelectorAll<HTMLElement>('[data-flip-id]').forEach(el => {
+      if (!el.classList.contains('cdk-drag-placeholder')) {
+        this.flipPositionCache.set(el.dataset['flipId']!, el.getBoundingClientRect());
+      }
+    });
+  }
+
+  private animateFlip(container: HTMLElement): void {
+    const children = container.querySelectorAll<HTMLElement>('[data-flip-id]');
+    children.forEach(el => {
+      if (el.classList.contains('cdk-drag-placeholder')) return;
+      const id = el.dataset['flipId']!;
+      const oldRect = this.flipPositionCache.get(id);
+      if (!oldRect) return;
+      const newRect = el.getBoundingClientRect();
+      const deltaX = oldRect.left - newRect.left;
+      const deltaY = oldRect.top - newRect.top;
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return;
+
+      el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+      el.style.transition = 'none';
+
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 200ms cubic-bezier(0.25, 0.8, 0.25, 1)';
+        el.style.transform = '';
+        el.addEventListener('transitionend', () => {
+          el.style.transition = '';
+          el.style.transform = '';
+        }, { once: true });
+      });
+    });
+    this.captureFlipPositions();
+  }
+
+  onCategoryDrop(event: CdkDragDrop<string>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    const categories = [...this.dashboardState.sortedEnvelopeCategories()];
+    const ccCount = categories.filter(c => c.categoryType === 'CC_PAYMENT').length;
+    // Clamp: standard categories can't go before CC categories
+    const targetIndex = Math.max(event.currentIndex, ccCount);
+    if (event.previousIndex === targetIndex) return;
+    moveItemInArray(categories, event.previousIndex, targetIndex);
+    // Assign sequential displayOrder
+    const updated = categories.map((c, i) => ({ ...c, displayOrder: i }));
+    this.dashboardState.envelopeCategories.set(updated);
+    // Persist changed items
+    for (const cat of updated) {
+      this.categoryApi.updateEnvelopeCategory(cat.id!, cat).subscribe({
+        error: (err) => this.showError(err, 'Failed to save category order'),
+      });
+    }
+  }
+
+  onEnvelopeDrop(event: CdkDragDrop<string>): void {
+    const sourceCatId = event.previousContainer.data;
+    const destCatId = event.container.data;
+
+    if (sourceCatId === destCatId) {
+      if (event.previousIndex === event.currentIndex) return;
+      // Reorder within same category
+      const envelopes = [...this.envelopesForCategory(sourceCatId)];
+      moveItemInArray(envelopes, event.previousIndex, event.currentIndex);
+      const updated = envelopes.map((e, i) => ({ ...e, displayOrder: i }));
+      this.dashboardState.envelopes.update(all =>
+        all.map(e => updated.find(u => u.id === e.id) ?? e)
+      );
+      for (const env of updated) {
+        this.envelopeApi.updateEnvelope(env.id!, env).subscribe({
+          error: (err) => this.showError(err, 'Failed to save envelope order'),
+        });
+      }
+    } else {
+      // Move envelope to different category
+      const sourceEnvelopes = [...this.envelopesForCategory(sourceCatId)];
+      const destEnvelopes = [...this.envelopesForCategory(destCatId)];
+      transferArrayItem(sourceEnvelopes, destEnvelopes, event.previousIndex, event.currentIndex);
+      const updatedSource = sourceEnvelopes.map((e, i) => ({ ...e, displayOrder: i }));
+      const updatedDest = destEnvelopes.map((e, i) => ({ ...e, envelopeCategoryId: destCatId, displayOrder: i }));
+      const allUpdated = [...updatedSource, ...updatedDest];
+      this.dashboardState.envelopes.update(all =>
+        all.map(e => allUpdated.find(u => u.id === e.id) ?? e)
+      );
+      // Expand collapsed destination so the user sees the transferred envelope
+      if (this.isCategoryCollapsed(destCatId)) {
+        this.collapsedCategories.update(set => {
+          const next = new Set(set);
+          next.delete(destCatId);
+          return next;
+        });
+      }
+      for (const env of allUpdated) {
+        this.envelopeApi.updateEnvelope(env.id!, env).subscribe({
+          error: (err) => this.showError(err, 'Failed to save envelope order'),
+        });
+      }
     }
   }
 

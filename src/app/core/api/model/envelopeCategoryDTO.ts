@@ -15,5 +15,6 @@ export interface EnvelopeCategoryDTO {
     name: string;
     categoryType?: string;
     createdAt?: string;
+    displayOrder?: number;
 }
 

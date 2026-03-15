@@ -204,3 +204,50 @@ a {
     0 0 100px rgba(248, 113, 113, 0.05) !important;
   border: 1px solid rgba(248, 113, 113, 0.3) !important;
 }
+
+// ── CDK Drag & Drop ─────────────────────────────────────────────
+// Preview is rendered at <body> level, so these MUST be global.
+.cdk-drag-preview {
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(129, 140, 248, 0.3),
+    0 0 24px rgba(129, 140, 248, 0.15);
+  background: rgba(18, 22, 32, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  // Kill any inherited transition so the preview tracks the cursor instantly
+  transition: none !important;
+  transform: scale(1.03);
+  z-index: 1000;
+  cursor: grabbing;
+
+  // Override hover effects inherited from the cloned element
+  &:hover {
+    transform: scale(1.03) !important;
+  }
+}
+
+.cdk-drag-placeholder {
+  opacity: 0;
+  // Visible outline showing the drop target
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px dashed var(--accent-secondary, #818cf8);
+    border-radius: var(--radius-lg);
+    background: rgba(129, 140, 248, 0.06);
+    opacity: 1;
+  }
+}
+
+.cdk-drag-animating {
+  transition: transform 250ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+// Items that need to shift out of the way during drag
+.cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
+  transition: transform 250ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
