@@ -6,12 +6,15 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
 
 import { AuthService } from '../../../core/auth/auth.service';
 import { DashboardStateService } from '../dashboard-state.service';
 import { UnallocatedBanner } from '../../../shared/components/unallocated-banner/unallocated-banner';
+import { DeleteAccountDialog } from './delete-account-dialog';
 
 @Component({
   selector: 'app-layout',
@@ -25,6 +28,8 @@ import { UnallocatedBanner } from '../../../shared/components/unallocated-banner
     MatListModule,
     MatIconModule,
     MatButtonModule,
+    MatMenuModule,
+    MatDialogModule,
     UnallocatedBanner,
   ],
   templateUrl: './layout.html',
@@ -33,6 +38,7 @@ import { UnallocatedBanner } from '../../../shared/components/unallocated-banner
 export class Layout implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly breakpointObserver = inject(BreakpointObserver);
+  private readonly dialog = inject(MatDialog);
   protected readonly dashboardState = inject(DashboardStateService);
 
   protected readonly userEmail = this.authService.userEmail;
@@ -51,6 +57,15 @@ export class Layout implements OnInit {
 
   onLogout(): void {
     this.authService.logout();
+  }
+
+  openDeleteAccountDialog(): void {
+    this.dialog.open(DeleteAccountDialog, {
+      width: '520px',
+      maxWidth: 'calc(100vw - 24px)',
+      autoFocus: false,
+      restoreFocus: true,
+    });
   }
 
   onDismissBanner(): void {

@@ -104,11 +104,30 @@ mat-nav-list {
   font-size: 0.875rem;
 }
 
+.user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding-inline: 0.75rem;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+  }
+}
+
 .user-email {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.menu-caret {
+  margin-right: -0.25rem;
 }
 
 // ── Page Content ─────────────────────────────────────────────

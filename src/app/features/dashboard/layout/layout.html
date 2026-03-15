@@ -45,10 +45,29 @@
         </button>
       }
       <span class="spacer"></span>
-      <div class="user-info">
+      <button
+        mat-button
+        class="user-menu-trigger"
+        [matMenuTriggerFor]="userMenu"
+        aria-label="Open account menu">
         <mat-icon>person_outline</mat-icon>
-        <span class="user-email">{{ userEmail() }}</span>
-      </div>
+        <span class="user-email">{{ userEmail() || 'Account' }}</span>
+        <mat-icon class="menu-caret">expand_more</mat-icon>
+      </button>
+      <mat-menu #userMenu="matMenu" xPosition="before">
+        <button mat-menu-item disabled>
+          <mat-icon>mail_outline</mat-icon>
+          <span>{{ userEmail() || 'Signed in' }}</span>
+        </button>
+        <button mat-menu-item (click)="onLogout()">
+          <mat-icon>logout</mat-icon>
+          <span>Sign Out</span>
+        </button>
+        <button mat-menu-item (click)="openDeleteAccountDialog()">
+          <mat-icon>delete_forever</mat-icon>
+          <span>Delete Account</span>
+        </button>
+      </mat-menu>
     </mat-toolbar>
 
     <main class="page-content">

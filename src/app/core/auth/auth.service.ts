@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, tap, switchMap, of, catchError } from 'rxjs';
+import { Observable, tap, switchMap, of, catchError, throwError } from 'rxjs';
 
 import { AuthControllerService } from '../api/api/authController.service';
 import { AppUserControllerService } from '../api/api/appUserController.service';
@@ -60,6 +60,15 @@ export class AuthService {
         return of({} as AuthResponseDTO);
       })
     );
+  }
+
+  deleteCurrentUser(): Observable<void> {
+    const userId = this._userId();
+    if (!userId) {
+      return throwError(() => new Error('No signed-in user is available for deletion.'));
+    }
+
+    return this.userApi._delete(userId);
   }
 
   getAccessToken(): string | null {

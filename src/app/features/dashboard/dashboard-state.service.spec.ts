@@ -202,6 +202,32 @@ describe('DashboardStateService', () => {
     });
   });
 
+  describe('reset', () => {
+    it('clears all stored dashboard data and resets ui state', () => {
+      service.accounts.set([mockBankAccount()]);
+      service.envelopeCategories.set([mockEnvelopeCategory()]);
+      service.envelopes.set([mockEnvelope()]);
+      service.transactions.set([mockTransaction()]);
+      service.spentSummaries.set([mockSpentSummary()]);
+      service.monthlyAllocations.set([mockEnvelopeAllocation()]);
+      service.loading.set(true);
+      service.loadError.set('Something failed');
+      service.viewedMonth.set('2025-12-01');
+
+      service.reset();
+
+      expect(service.accounts()).toEqual([]);
+      expect(service.envelopeCategories()).toEqual([]);
+      expect(service.envelopes()).toEqual([]);
+      expect(service.transactions()).toEqual([]);
+      expect(service.spentSummaries()).toEqual([]);
+      expect(service.monthlyAllocations()).toEqual([]);
+      expect(service.loading()).toBe(false);
+      expect(service.loadError()).toBeNull();
+      expect(service.viewedMonth()).not.toBe('2025-12-01');
+    });
+  });
+
   // ── CRUD helpers ────────────────────────────────────────────
 
   describe('account CRUD', () => {

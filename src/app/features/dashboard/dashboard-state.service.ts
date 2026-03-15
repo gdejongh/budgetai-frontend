@@ -252,6 +252,18 @@ export class DashboardStateService {
     this.loadAll();
   }
 
+  reset(): void {
+    this.accounts.set([]);
+    this.envelopeCategories.set([]);
+    this.envelopes.set([]);
+    this.transactions.set([]);
+    this.spentSummaries.set([]);
+    this.monthlyAllocations.set([]);
+    this.viewedMonth.set(this.getCurrentMonthStr());
+    this.loading.set(false);
+    this.loadError.set(null);
+  }
+
   /**
    * Navigate to a specific month and reload monthly allocations + spent summaries.
    */
